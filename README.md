@@ -101,9 +101,15 @@ graph TD
 **Scope:**
 - Per-video card: play pre-rendered WandB video (already has action overlay) at 2-3x, rate good/bad/skip
 - Category-specific issue checklists per task type
-- **Chunk-based distribution:** Videos are split into chunks of ~20. Anyone can claim a chunk, evaluate it, and submit results. No need to pre-assign people — one person can take 10 chunks, or 5 people can take 2 each. Results are just submitted to a database.
+- **Chunk-based work:** Videos split into chunks of ~20. Designed for single-person use first — one person works through chunks sequentially. Scales to multiple people if needed (anyone claims a chunk, submits to database).
+- **Progress tracking:** Query the database to see which chunks/videos are ✅ finished vs ⬜ remaining. Essential for knowing what's left and resuming work.
 - Stretch: on-demand video generation (define ad-hoc action sequence → generate → evaluate)
 - Key principle: evaluate each video independently, never compare two checkpoints side-by-side
+
+**Database & Infrastructure:**
+- **Write protocol:** Append-only — ratings are only inserted, never updated or deleted. No concurrency issues.
+- **Hosting:** RunPod CPU instance
+- **Backup strategy:** Rotating backups — keep 10 backups, create one every 5 minutes, delete oldest outside the retention window
 
 ---
 
