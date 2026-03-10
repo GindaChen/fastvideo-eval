@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WanGame Eval — Evaluation Pipeline</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" id="theme-stylesheet" href="themes/midnight.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* ═══ STRUCTURAL LAYOUT (theme-independent) ═══ */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* When a slide needs scrolling, allow it */
+        body.slide-scrollable {
+            overflow: hidden;
+            /* body stays hidden, slide itself scrolls */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            transition: background .35s, color .35s;
+            --slide-font-scale: 1;
+            --slide-img-width: 100;
+        }
+
+        /* ── Slide viewport ── */
+        .deck {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .slide {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            padding: 60px 80px 100px 80px;
+            opacity: 0;
+            transform: translateX(60px);
+            transition: opacity .45s ease, transform .45s ease;
+            pointer-events: none;
+            overflow-y: auto;
+        }
+
+        .slide.active {
+            opacity: 1;
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .slide.prev {
+            opacity: 0;
+            transform: translateX(-60px);
+        }
+
+        /* ── Slide label ── */
+        .slide-label {
+            position: absolute;
+            top: 28px;
+            left: 80px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: .7;
+        }
+
+        /* ── Images ── */
+        .slide img {
+            max-width: calc(var(--slide-img-width) * 1%);
+            height: auto;
+            border-radius: 10px;
+            margin: 16px 0;
+            display: block;
+            transition: max-width .25s ease;
+        }
+
+        .slide video {
+            max-width: calc(var(--slide-img-width) * 1%);
+            height: auto;
+            border-radius: 10px;
+            margin: 16px 0;
+            display: block;
+            transition: max-width .25s ease;
+        }
+
+        /* ── Progress bar ── */
+        .progress {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            z-index: 200;
+            transition: width .4s ease;
+        }
+
+        /* ── Nav bar ── */
+        .nav-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 100;
+            border-radius: 999px;
+            padding: 8px 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, .4);
+            transition: background .35s, border-color .35s, opacity .4s ease, visibility .4s ease;
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .nav-bar.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .nav-bar button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.1rem;
+            padding: 6px 10px;
+            border-radius: 8px;
+            transition: all .2s;
+        }
+
+        .counter {
+            font-size: 0.82rem;
+            min-width: 50px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Dots ── */
+        .dots {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all .25s;
+        }
+
+        .dot.active {
+            transform: scale(1.3);
+        }
+
+        /* ── Settings button ── */
+        .settings-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 150;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            border: 1px solid;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            transition: all .25s;
+            background: transparent;
+        }
+
+        .settings-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* ── Settings panel ── */
+        .settings-panel {
+            position: fixed;
+            top: 68px;
+            right: 20px;
+            z-index: 150;
+            width: 260px;
+            max-height: 70vh;
+            overflow-y: auto;
+            border-radius: 14px;
+            border: 1px solid;
+            padding: 16px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, .4);
+            opacity: 0;
+            transform: translateY(-10px) scale(.95);
+            pointer-events: none;
+            transition: all .25s ease;
+        }
+
+        .settings-panel.open {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        .settings-panel h3 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            opacity: .6;
+        }
+
+        .theme-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .theme-option {
+            display: block;
+            width: 100%;
+            text-align: left;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            font-weight: 500;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all .2s;
+            background: transparent;
+            font-family: inherit;
+        }
+
+        .theme-option:hover {
+            opacity: .85;
+        }
+
+        .theme-option.active {
+            font-weight: 700;
+        }
+
+        /* ── Settings controls ── */
+        .settings-divider {
+            height: 1px;
+            margin: 14px 0;
+            opacity: .2;
+            background: currentColor;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-row label {
+            font-size: 0.82rem;
+            font-weight: 500;
+            white-space: nowrap;
+        }
+
+        .control-row .value {
+            font-size: 0.78rem;
+            font-variant-numeric: tabular-nums;
+            min-width: 38px;
+            text-align: right;
+            opacity: .7;
+        }
+
+        .control-row input[type="range"] {
+            flex: 1;
+            min-width: 0;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            border-radius: 2px;
+            outline: none;
+            cursor: pointer;
+            background: currentColor;
+            opacity: .3;
+            transition: opacity .2s;
+        }
+
+        .control-row input[type="range"]:hover {
+            opacity: .5;
+        }
+
+        .control-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* ── Typography (base structure, colors from theme) ── */
+        .slide h1 {
+            font-size: calc(2.4rem * var(--slide-font-scale));
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 20px;
+            line-height: 1.15;
+        }
+
+        .slide h2 {
+            font-size: calc(1.55rem * var(--slide-font-scale));
+            font-weight: 700;
+            margin: 0 0 16px;
+            letter-spacing: -0.5px;
+        }
+
+        .slide h3 {
+            font-size: calc(1.1rem * var(--slide-font-scale));
+            font-weight: 600;
+            margin: 18px 0 8px;
+        }
+
+        .slide p {
+            font-size: calc(1rem * var(--slide-font-scale));
+            line-height: 1.8;
+            margin-bottom: 12px;
+        }
+
+        .slide ul,
+        .slide ol {
+            padding-left: 24px;
+            margin-bottom: 12px;
+        }
+
+        .slide li {
+            font-size: calc(0.95rem * var(--slide-font-scale));
+            line-height: 1.8;
+            margin-bottom: 5px;
+        }
+
+        .slide code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.86em;
+            padding: 2px 7px;
+            border-radius: 5px;
+        }
+
+        .slide pre {
+            border-radius: 10px;
+            padding: 18px 22px;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.65;
+            margin: 12px 0;
+        }
+
+        .slide pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            font-size: inherit;
+        }
+
+        .slide blockquote {
+            border-left: 3px solid;
+            padding: 12px 18px;
+            border-radius: 0 10px 10px 0;
+            margin: 14px 0;
+        }
+
+        .slide blockquote p {
+            margin-bottom: 0;
+            font-size: 0.95rem;
+        }
+
+        .slide table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 14px 0;
+            font-size: 0.88rem;
+        }
+
+        .slide th,
+        .slide td {
+            padding: 10px 14px;
+            text-align: left;
+        }
+
+        .slide hr {
+            border: none;
+            height: 1px;
+            margin: 20px 0;
+        }
+
+        .slide a {
+            text-decoration: none;
+            border-bottom: 1px dashed;
+        }
+
+        /* ── Mini-map (left sidebar outline) ── */
+        .minimap {
+            position: fixed;
+            top: 50%;
+            left: 16px;
+            transform: translateY(-50%);
+            z-index: 140;
+            max-height: 80vh;
+            overflow-y: auto;
+            padding: 12px 14px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            line-height: 1.4;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity .3s ease, visibility .3s ease;
+            pointer-events: none;
+            background: var(--minimap-bg, rgba(20, 20, 30, 0.85));
+            border: 1px solid var(--minimap-border, rgba(255, 255, 255, 0.1));
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            min-width: 180px;
+            max-width: 220px;
+        }
+
+        .minimap.visible {
+            opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
+        }
+
+        .minimap-section {
+            font-weight: 700;
+            font-size: 0.68rem;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            opacity: 0.5;
+            margin-top: 10px;
+            margin-bottom: 4px;
+            padding-left: 0;
+        }
+
+        .minimap-section:first-child {
+            margin-top: 0;
+        }
+
+        .minimap-item {
+            padding: 3px 8px;
+            border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: all .2s;
+            opacity: 0.6;
+        }
+
+        .minimap-item:hover {
+            opacity: 1;
+        }
+
+        .minimap-item.active {
+            opacity: 1;
+            font-weight: 600;
+            background: var(--minimap-active-bg, rgba(255, 255, 255, 0.1));
+        }
+
+        /* Show minimap on left-edge hover */
+        .minimap-trigger {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 40px;
+            height: 100%;
+            z-index: 139;
+        }
+
+        @media (max-width: 700px) {
+            .slide {
+                padding: 40px 24px;
+            }
+
+            .slide h1 {
+                font-size: 1.7rem;
+            }
+
+            .slide-label {
+                left: 24px;
+            }
+
+            .settings-panel {
+                width: 220px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="minimap-trigger" id="minimap-trigger"></div>
+    <div class="minimap" id="minimap"></div>
+    <div class="deck" id="deck"></div>
+    <div class="progress" id="progress"></div>
+
+    <nav class="nav-bar">
+        <button id="prev" aria-label="Previous slide">◀</button>
+        <div class="dots" id="dots"></div>
+        <button id="next" aria-label="Next slide">▶</button>
+        <span class="counter" id="counter"></span>
+    </nav>
+
+    <button class="settings-btn" id="settings-btn" aria-label="Theme settings">⚙</button>
+    <div class="settings-panel" id="settings-panel">
+        <h3>Display</h3>
+        <div class="control-row">
+            <label>Font Size</label>
+            <input type="range" id="font-size-slider" min="20" max="300" value="100" step="5">
+            <span class="value" id="font-size-value">100%</span>
+        </div>
+        <div class="control-row">
+            <label>Figure Width</label>
+            <input type="range" id="img-width-slider" min="25" max="120" value="100" step="5">
+            <span class="value" id="img-width-value">100%</span>
+        </div>
+        <div class="settings-divider"></div>
+        <h3>Theme</h3>
+        <div class="theme-list" id="theme-list"></div>
+    </div>
+
+    <script src="engine.js"></script>
+</body>
+
+</html>

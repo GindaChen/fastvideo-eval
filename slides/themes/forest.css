@@ -1,0 +1,92 @@
+/* Theme: Forest */
+body {
+  background: #0a1210;
+  color: #d4e8dc;
+}
+
+/* ── Slide ── */
+.slide-label { color: #34d399; }
+.slide h1 {
+  background: linear-gradient(135deg, #34d399, #4ade80);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.slide h2 { color: #d4e8dc; }
+.slide h3 { color: #4ade80; }
+.slide p, .slide li { color: #7aaa90; }
+.slide strong { color: #d4e8dc; }
+.slide em { color: #34d399; font-style: normal; }
+.slide a { color: #34d399; border-bottom-color: #34d399; }
+.slide a:hover { color: #4ade80; }
+.slide hr { background: #1e3828; }
+
+/* ── Code ── */
+.slide code {
+  background: rgba(52,211,153,.08);
+  border: 1px solid #1e3828;
+  color: #34d399;
+}
+.slide pre {
+  background: #080f0c;
+  border: 1px solid #1e3828;
+  color: #7aaa90;
+}
+
+/* ── Blockquote ── */
+.slide blockquote {
+  border-left-color: #34d399;
+  background: rgba(52,211,153,.08);
+}
+.slide blockquote p { color: #d4e8dc; }
+
+/* ── Table ── */
+.slide th { color: #d4e8dc; background: #111e1a; }
+.slide td { color: #7aaa90; border-bottom-color: #1e3828; }
+.slide th { border-bottom: 1px solid #1e3828; }
+.slide tr:hover td { background: #152820; }
+
+/* ── Images ── */
+.slide img { border: 1px solid #1e3828; }
+
+/* ── Nav bar ── */
+.nav-bar {
+  background: #111e1a;
+  border: 1px solid #1e3828;
+}
+.nav-bar button { color: #7aaa90; }
+.nav-bar button:hover { color: #d4e8dc; background: #152820; }
+.counter { color: #7aaa90; }
+
+/* ── Dots ── */
+.dot { background: #1e3828; }
+.dot.active { background: #34d399; box-shadow: 0 0 8px #34d399; }
+.dot:hover { background: #7aaa90; }
+
+/* ── Progress ── */
+.progress {
+  background: linear-gradient(90deg, #34d399, #4ade80);
+}
+
+/* ── Settings ── */
+.settings-btn {
+  color: #7aaa90;
+  border-color: #1e3828;
+  background: #111e1a;
+}
+.settings-btn:hover { color: #d4e8dc; border-color: #34d399; }
+.settings-panel {
+  background: #111e1a;
+  border-color: #1e3828;
+}
+.settings-panel h3 { color: #7aaa90; }
+.theme-option {
+  color: #7aaa90;
+}
+.theme-option:hover {
+  background: #152820;
+  color: #d4e8dc;
+}
+.theme-option.active {
+  background: rgba(52,211,153,.08);
+  color: #34d399;
+  border-color: #34d399;
+}

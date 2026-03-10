@@ -1,0 +1,9 @@
+{
+    "title": "Presentation Title",
+    "files": [
+        {
+            "file": "slides.md",
+            "section": "Introduction"
+        }
+    ]
+}

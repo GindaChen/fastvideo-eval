@@ -1,0 +1,92 @@
+/* Theme: Terminal */
+body {
+  background: #0a0a0a;
+  color: #00ff41;
+}
+
+/* ── Slide ── */
+.slide-label { color: #00ff41; }
+.slide h1 {
+  background: linear-gradient(135deg, #00ff41, #39ff14);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.slide h2 { color: #00ff41; }
+.slide h3 { color: #39ff14; }
+.slide p, .slide li { color: #00cc33; }
+.slide strong { color: #00ff41; }
+.slide em { color: #00ff41; font-style: normal; }
+.slide a { color: #00ff41; border-bottom-color: #00ff41; }
+.slide a:hover { color: #39ff14; }
+.slide hr { background: #2a2a2a; }
+
+/* ── Code ── */
+.slide code {
+  background: rgba(0,255,65,.06);
+  border: 1px solid #2a2a2a;
+  color: #00ff41;
+}
+.slide pre {
+  background: #050505;
+  border: 1px solid #2a2a2a;
+  color: #00cc33;
+}
+
+/* ── Blockquote ── */
+.slide blockquote {
+  border-left-color: #00ff41;
+  background: rgba(0,255,65,.06);
+}
+.slide blockquote p { color: #00ff41; }
+
+/* ── Table ── */
+.slide th { color: #00ff41; background: #111111; }
+.slide td { color: #00cc33; border-bottom-color: #2a2a2a; }
+.slide th { border-bottom: 1px solid #2a2a2a; }
+.slide tr:hover td { background: #1a1a1a; }
+
+/* ── Images ── */
+.slide img { border: 1px solid #2a2a2a; }
+
+/* ── Nav bar ── */
+.nav-bar {
+  background: #111111;
+  border: 1px solid #2a2a2a;
+}
+.nav-bar button { color: #00cc33; }
+.nav-bar button:hover { color: #00ff41; background: #1a1a1a; }
+.counter { color: #00cc33; }
+
+/* ── Dots ── */
+.dot { background: #2a2a2a; }
+.dot.active { background: #00ff41; box-shadow: 0 0 8px #00ff41; }
+.dot:hover { background: #00cc33; }
+
+/* ── Progress ── */
+.progress {
+  background: linear-gradient(90deg, #00ff41, #39ff14);
+}
+
+/* ── Settings ── */
+.settings-btn {
+  color: #00cc33;
+  border-color: #2a2a2a;
+  background: #111111;
+}
+.settings-btn:hover { color: #00ff41; border-color: #00ff41; }
+.settings-panel {
+  background: #111111;
+  border-color: #2a2a2a;
+}
+.settings-panel h3 { color: #00cc33; }
+.theme-option {
+  color: #00cc33;
+}
+.theme-option:hover {
+  background: #1a1a1a;
+  color: #00ff41;
+}
+.theme-option.active {
+  background: rgba(0,255,65,.06);
+  color: #00ff41;
+  border-color: #00ff41;
+}

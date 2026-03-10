@@ -1,0 +1,92 @@
+/* Theme: Dracula */
+body {
+  background: #282a36;
+  color: #f8f8f2;
+}
+
+/* ── Slide ── */
+.slide-label { color: #bd93f9; }
+.slide h1 {
+  background: linear-gradient(135deg, #bd93f9, #ff79c6);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.slide h2 { color: #f8f8f2; }
+.slide h3 { color: #ff79c6; }
+.slide p, .slide li { color: #8b92b0; }
+.slide strong { color: #f8f8f2; }
+.slide em { color: #50fa7b; font-style: normal; }
+.slide a { color: #bd93f9; border-bottom-color: #bd93f9; }
+.slide a:hover { color: #ff79c6; }
+.slide hr { background: #565a78; }
+
+/* ── Code ── */
+.slide code {
+  background: rgba(189,147,249,.08);
+  border: 1px solid #565a78;
+  color: #bd93f9;
+}
+.slide pre {
+  background: #21222c;
+  border: 1px solid #565a78;
+  color: #8b92b0;
+}
+
+/* ── Blockquote ── */
+.slide blockquote {
+  border-left-color: #bd93f9;
+  background: rgba(189,147,249,.08);
+}
+.slide blockquote p { color: #f8f8f2; }
+
+/* ── Table ── */
+.slide th { color: #f8f8f2; background: #333647; }
+.slide td { color: #8b92b0; border-bottom-color: #565a78; }
+.slide th { border-bottom: 1px solid #565a78; }
+.slide tr:hover td { background: #3e4258; }
+
+/* ── Images ── */
+.slide img { border: 1px solid #565a78; }
+
+/* ── Nav bar ── */
+.nav-bar {
+  background: #333647;
+  border: 1px solid #565a78;
+}
+.nav-bar button { color: #8b92b0; }
+.nav-bar button:hover { color: #f8f8f2; background: #3e4258; }
+.counter { color: #8b92b0; }
+
+/* ── Dots ── */
+.dot { background: #565a78; }
+.dot.active { background: #bd93f9; box-shadow: 0 0 8px #bd93f9; }
+.dot:hover { background: #8b92b0; }
+
+/* ── Progress ── */
+.progress {
+  background: linear-gradient(90deg, #bd93f9, #ff79c6);
+}
+
+/* ── Settings ── */
+.settings-btn {
+  color: #8b92b0;
+  border-color: #565a78;
+  background: #333647;
+}
+.settings-btn:hover { color: #f8f8f2; border-color: #bd93f9; }
+.settings-panel {
+  background: #333647;
+  border-color: #565a78;
+}
+.settings-panel h3 { color: #8b92b0; }
+.theme-option {
+  color: #8b92b0;
+}
+.theme-option:hover {
+  background: #3e4258;
+  color: #f8f8f2;
+}
+.theme-option.active {
+  background: rgba(189,147,249,.08);
+  color: #bd93f9;
+  border-color: #bd93f9;
+}
