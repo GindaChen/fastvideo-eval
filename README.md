@@ -6,12 +6,11 @@
 
 ```mermaid
 graph LR
-    A[Training completes] --> B[Top-5 checkpoints]
-    B --> C[Generate videos<br/>for ~120 prompts]
-    C --> D[Upload to WandB<br/>with task tags]
-    D --> E[Eval App distributes<br/>to 5 evaluators]
-    E --> F[Per-task scores<br/>aggregated]
-    F --> G[Checkpoint decision<br/>in < 20 min]
+    A[Training runs on M2] -->|every 500 steps| B[Videos generated +<br/>uploaded to WandB]
+    B --> C[Human reviews WandB<br/>selects Top-5 checkpoints]
+    C --> D[Eval App streams<br/>videos from WandB]
+    D --> E[5 evaluators rate<br/>per-task in parallel]
+    E --> F[Checkpoint decision<br/>in < 20 min]
 ```
 
 ## Why This Repo Exists
@@ -26,60 +25,60 @@ This repo is the home for everything needed to fix that — from evaluation desi
 
 ---
 
-## Subprojects
+## Data Pipeline (✅ Already Working)
 
-### SP1: Data Pipeline
-
-**Mission:** Automate the flow from training checkpoint → video generation → WandB → evaluation-ready data.
+The data pipeline is **already in place** and does not require further work:
 
 ```mermaid
-graph TD
-    subgraph Training["Training (M2)"]
-        T1[Training loop] -->|every 500 steps| T2[Optical flow eval]
-        T2 --> T3[Top-5 checkpoint selection]
-        T1 -->|every 5K steps| T4[Round-number checkpoint save]
-    end
-
-    subgraph VideoGen["Video Generation"]
-        T3 --> V1[Load checkpoint]
-        T4 --> V1
-        V1 --> V2[Generate videos<br/>for all prompts]
+graph LR
+    subgraph M2["M2 Cluster"]
+        T1[Training loop] -->|every 500 steps| T2[Generate validation<br/>videos for 32 prompts]
+        T2 --> T3[Compute optical<br/>flow scores]
     end
 
     subgraph WandB["WandB (Source of Truth)"]
-        V2 --> W1[Upload videos +<br/>prompt metadata]
-        W1 --> W2[Add task/category tags]
-        W2 --> W3[Videos ready for<br/>eval App streaming]
+        T2 -->|upload| W1[Videos + prompt<br/>metadata stored]
+        T3 -->|upload| W2[Optical flow<br/>scores stored]
     end
 
+    subgraph Human["Human Review"]
+        W1 & W2 --> H1[Review WandB results]
+        H1 --> H2[Select Top-5<br/>checkpoints to keep]
+    end
+
+    style M2 fill:#16213e,color:#fff
     style WandB fill:#1a1a2e,color:#fff
-    style Training fill:#16213e,color:#fff
-    style VideoGen fill:#0f3460,color:#fff
+    style Human fill:#0f3460,color:#fff
 ```
 
-**Key clarification:** Videos are streamed from **WandB**, not M2. WandB is the source of truth — training uploads validation videos with prompt metadata during training. The eval App reads directly from WandB.
+**How it works today:**
+- Training runs on M2, and **every 500 steps** it automatically generates validation videos for all prompts and computes optical flow scores
+- Videos and scores are **uploaded from M2 to WandB** with prompt metadata
+- WandB accumulates all validation results across the entire training run
+- A human reviews WandB to select the **Top-5 best checkpoints** (based on optical flow + eyeballing)
+- Every 5K steps, a round-number checkpoint is also saved
 
-**Scope:**
-- Automate post-training video generation (checkpoint + prompt set → video batch)
-- Add task/category tags to WandB prompt metadata
-- Extract evaluation-ready pairs from existing WandB data
-- GT video recording via Minecraft simulator (delegatable)
+**What remains:** The pipeline produces the data. The remaining work is about what happens *after* the data lands in WandB — better tooling for evaluation (SP1), better scoring (SP2), and better prompt coverage (SP3).
 
 ---
 
-### SP2: Evaluation App
+## Subprojects
 
-**Mission:** A Tinder-style web app for fast, team-parallel human evaluation of generated videos.
+### SP1: Evaluation App
+
+**Mission:** A Tinder-style web app for fast, team-parallel human evaluation of generated videos, streaming directly from WandB.
+
+**Key detail:** Videos from WandB already have the action overlay pre-rendered — the App just plays them as-is (no compositing needed).
 
 ```mermaid
 graph TD
     subgraph DataSource["Data Source"]
-        DS1[WandB API] --> DS2[Stream videos +<br/>prompt metadata]
+        DS1[WandB API] --> DS2[Stream pre-rendered<br/>videos with action overlay]
     end
 
     subgraph App["Eval App"]
         DS2 --> A1[Video Card UI]
-        A1 --> A2[First frame +<br/>action overlay +<br/>video player 2-3x]
+        A1 --> A2[Play video at 2-3x<br/>overlay already baked in]
         A2 --> A3{Rate}
         A3 -->|Good| A4[Score: ✅]
         A3 -->|Bad| A5[Score: ❌ +<br/>issue checklist]
@@ -87,7 +86,7 @@ graph TD
         A5 --> A7[Optional: voice<br/>annotation]
     end
 
-    subgraph Team["Team-Parallel"]
+    subgraph Team["Category-Based Distribution"]
         A4 & A5 & A6 --> T1[Aggregate per-task<br/>per-checkpoint]
         T1 --> T2[5 evaluators ×<br/>5 min = 20 min]
     end
@@ -98,15 +97,15 @@ graph TD
 ```
 
 **Scope:**
-- Per-video evaluation card: first frame, action key overlay, video at 2-3x, rating controls
+- Per-video card: play pre-rendered WandB video (already has action overlay) at 2-3x, rate good/bad/skip
 - Category-specific issue checklists per task type
-- Team-parallel: distribute video slices across 5 evaluators
+- **Category-based distribution:** Each evaluator gets an entire task category and reviews all its videos sequentially (e.g., Person A reviews all "basic movement" videos, Person B reviews all "camera control" videos). This avoids context-switching between categories.
 - Stretch: on-demand video generation (define ad-hoc action sequence → generate → evaluate)
 - Key principle: evaluate each video independently, never compare two checkpoints side-by-side
 
 ---
 
-### SP3: Scoring & Analysis
+### SP2: Scoring & Analysis
 
 **Mission:** Define how per-video ratings become per-task scores and overall checkpoint rankings.
 
@@ -144,7 +143,7 @@ graph TD
 
 ---
 
-### SP4: Prompt Design & Task Taxonomy
+### SP3: Prompt Design & Task Taxonomy
 
 **Mission:** Define what we test and how — categorizing the 23 actions into evaluatable task groups with balanced coverage.
 
@@ -203,5 +202,5 @@ graph TD
 - **Model:** 1.3B parameter Minecraft world model
 - **Actions:** 23 types (movement, mouse, jump, hotbar F1-F8, sprint, still)
 - **Data format:** 77 frames × 23-dim binary vector per prompt
-- **Current validation:** 32 prompts × 5 checkpoints = 160 videos per eval round
-- **Target validation:** ~120 prompts × 5 checkpoints = 600 videos, evaluated by 5 people in <20 min
+- **Current validation:** 32 prompts, videos generated every 500 training steps
+- **Target validation:** ~120 prompts, evaluated by 5 people in <20 min
