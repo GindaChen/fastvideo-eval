@@ -86,20 +86,22 @@ graph TD
         A5 --> A7[Optional: voice<br/>annotation]
     end
 
-    subgraph Team["Category-Based Distribution"]
-        A4 & A5 & A6 --> T1[Aggregate per-task<br/>per-checkpoint]
-        T1 --> T2[5 evaluators ×<br/>5 min = 20 min]
+    subgraph Chunks["Chunk-Based Distribution"]
+        DS2 --> C1[Split into chunks<br/>~20 videos each]
+        C1 --> C2[Anyone claims<br/>a chunk]
+        C2 --> C3[Submit ratings<br/>to database]
+        A4 & A5 & A6 --> C3
     end
 
     style DataSource fill:#1a1a2e,color:#fff
     style App fill:#0f3460,color:#fff
-    style Team fill:#16213e,color:#fff
+    style Chunks fill:#16213e,color:#fff
 ```
 
 **Scope:**
 - Per-video card: play pre-rendered WandB video (already has action overlay) at 2-3x, rate good/bad/skip
 - Category-specific issue checklists per task type
-- **Category-based distribution:** Each evaluator gets an entire task category and reviews all its videos sequentially (e.g., Person A reviews all "basic movement" videos, Person B reviews all "camera control" videos). This avoids context-switching between categories.
+- **Chunk-based distribution:** Videos are split into chunks of ~20. Anyone can claim a chunk, evaluate it, and submit results. No need to pre-assign people — one person can take 10 chunks, or 5 people can take 2 each. Results are just submitted to a database.
 - Stretch: on-demand video generation (define ad-hoc action sequence → generate → evaluate)
 - Key principle: evaluate each video independently, never compare two checkpoints side-by-side
 
@@ -136,8 +138,10 @@ graph TD
 ```
 
 **Scope:**
-- Per-task scoring rubrics with difficulty-adjusted tolerance (flat terrain = zero tolerance, complex = some OK)
+- **Depends on SP3** for task categorization — before that's done, scoring works at per-video granularity (still useful)
+- Once tasks are categorized: per-task scoring rubrics with difficulty-adjusted tolerance
 - Aggregation method: per-task → overall ranking (not just "who wins most videos")
+- **Inspection view:** For each video × checkpoint, drill into the human score to understand what went wrong
 - Results dashboard / trend tracking across training runs
 - Comparison with optical flow scores for metric calibration
 
