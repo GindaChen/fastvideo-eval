@@ -4,7 +4,7 @@
 
 Rate. Compare. Export. Under 20 minutes per checkpoint.
 
-🌐 **[Live Demo / Docs →](https://gindachen.github.io/wangame-eval/)**
+🌐 **[Live Demo / Docs →](https://gindachen.github.io/fastvideo-eval/)**
 
 ---
 
