@@ -1,0 +1,9 @@
+{
+    "name": "WanGame Eval",
+    "short_name": "WanGame",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#0a0a0f",
+    "theme_color": "#0a0a0f",
+    "icons": []
+}

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#0a0a0f">
+    <title>WanGame Eval</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/evaluate.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+
+<body>
+    <!-- Sidebar Navigation -->
+    <aside id="sidebar" class="sidebar">
+        <div class="sidebar-brand">
+            <span class="sidebar-icon">🎮</span>
+            <span class="sidebar-title">WanGame</span>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="#" data-page="dashboard" class="sidebar-link active">
+                <span class="sl-icon">📊</span><span class="sl-label">Dashboard</span>
+            </a>
+            <a href="#" data-page="evaluate" class="sidebar-link">
+                <span class="sl-icon">🎬</span><span class="sl-label">Evaluate</span>
+            </a>
+            <a href="#" data-page="review" class="sidebar-link">
+                <span class="sl-icon">🔍</span><span class="sl-label">Review</span>
+            </a>
+            <a href="#" data-page="results" class="sidebar-link">
+                <span class="sl-icon">📈</span><span class="sl-label">Results</span>
+            </a>
+            <a href="#" data-page="settings" class="sidebar-link">
+                <span class="sl-icon">⚙️</span><span class="sl-label">Settings</span>
+            </a>
+        </nav>
+        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+            <span id="sidebar-toggle-icon">◀</span>
+        </button>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main">
+
+        <!-- ============================================================= -->
+        <!-- DASHBOARD PAGE                                                  -->
+        <!-- ============================================================= -->
+        <section id="page-dashboard" class="page active">
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                <p class="subtitle" id="dash-project-info">Loading...</p>
+            </div>
+
+            <!-- Progress overview -->
+            <div class="stats-grid" id="dash-stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-committed">–</div>
+                    <div class="stat-label">Committed</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill committed" id="bar-committed"></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-skipped">–</div>
+                    <div class="stat-label">Skipped</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill skipped" id="bar-skipped"></div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="stat-unrated">–</div>
+                    <div class="stat-label">Unrated</div>
+                    <div class="stat-bar">
+                        <div class="stat-bar-fill unrated" id="bar-unrated"></div>
+                    </div>
+                </div>
+                <div class="stat-card accent">
+                    <div class="stat-value" id="stat-total">–</div>
+                    <div class="stat-label">Total Videos</div>
+                </div>
+            </div>
+
+            <!-- Quick actions -->
+            <div class="action-row">
+                <button class="btn btn-primary btn-lg" onclick="router.navigate('evaluate')">
+                    ▶ Start Evaluating
+                </button>
+                <button class="btn btn-secondary btn-lg" onclick="loadSkippedQueue()">
+                    ↻ Revisit Skipped
+                </button>
+            </div>
+
+            <!-- Chunk grid -->
+            <div class="section-header">
+                <h2>Evaluation Chunks</h2>
+            </div>
+            <div class="chunk-grid" id="chunk-grid">
+                <div class="empty-state">No chunks created yet. Configure your run in Settings.</div>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- EVALUATE PAGE                                                   -->
+        <!-- ============================================================= -->
+        <section id="page-evaluate" class="page">
+            <!-- Empty/loading state (shown when no videos loaded) -->
+            <div id="eval-empty" class="eval-empty-state">
+                <div class="eval-empty-inner">
+                    <div class="eval-empty-msg">Loading...</div>
+                    <div class="eval-spinner"></div>
+                </div>
+            </div>
+
+            <!-- Actual eval UI (hidden until videos loaded) -->
+            <div id="eval-content" class="hidden">
+                <!-- Top: progress + toolbar -->
+                <div class="eval-toolbar">
+                    <button class="toolbar-btn" onclick="restartEval()" title="Back to matrix">✕</button>
+                    <div class="eval-chunk-label" id="eval-chunk-label">Video 0 of 0</div>
+                    <div class="toolbar-controls">
+                        <button class="toolbar-btn" onclick="goBack()" title="Previous (Q)">◀</button>
+                        <button class="toolbar-btn" onclick="goForward()" title="Next unrated (E)">▶</button>
+                    </div>
+                </div>
+                <div class="eval-dots" id="eval-dots"></div>
+
+                <!-- Controls row: speed + video size -->
+                <div class="eval-controls-row">
+                    <label class="control-label">
+                        <span>Speed</span>
+                        <input type="range" id="speed-slider" min="0.25" max="4" step="0.25" value="2"
+                            oninput="setSpeed(parseFloat(this.value))">
+                        <span class="control-value" id="speed-badge">2×</span>
+                    </label>
+                    <label class="control-label">
+                        <span>Size</span>
+                        <input type="range" id="size-slider" min="40" max="100" step="5" value="100"
+                            oninput="setVideoSize(parseInt(this.value))">
+                        <span class="control-value" id="size-badge">100%</span>
+                    </label>
+                </div>
+
+                <!-- Center: video card -->
+                <div class="eval-card-container" id="eval-card-container">
+                    <div class="eval-card" id="eval-card">
+                        <div class="eval-video-wrap">
+                            <video id="eval-video" playsinline muted loop preload="auto">
+                                <source src="" type="video/mp4">
+                            </video>
+                            <div class="eval-video-overlay" id="eval-overlay">
+                                <span class="eval-overlay-icon">▶</span>
+                            </div>
+                            <div class="eval-time-badge" id="time-badge">0:00 / 0:00 • F0</div>
+                        </div>
+                        <div class="eval-meta">
+                            <span class="eval-caption" id="eval-caption">–</span>
+                            <span class="eval-tag" id="eval-category">–</span>
+                            <span class="eval-tag" id="eval-step">–</span>
+                        </div>
+                    </div>
+
+                    <!-- Swipe feedback -->
+                    <div class="swipe-indicator left" id="swipe-bad">❌</div>
+                    <div class="swipe-indicator right" id="swipe-good">✅</div>
+                    <div class="swipe-indicator top" id="swipe-skip">⏭</div>
+                </div>
+
+                <!-- Bottom: rating buttons -->
+                <div class="eval-actions">
+                    <button class="btn-rate bad" id="btn-bad" onclick="submitRating('bad')">
+                        <span class="btn-rate-icon">❌</span>
+                        <span>Bad</span>
+                    </button>
+                    <button class="btn-rate skip" id="btn-skip" onclick="submitRating('skip')">
+                        <span class="btn-rate-icon">⏭</span>
+                        <span>Skip</span>
+                    </button>
+                    <button class="btn-rate good" id="btn-good" onclick="submitRating('good')">
+                        <span class="btn-rate-icon">✅</span>
+                        <span>Good</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Issue checklist (shown on Bad) -->
+            <div class="issue-overlay hidden" id="issue-overlay">
+                <div class="issue-panel">
+                    <h3>What's wrong?</h3>
+                    <div class="issue-list">
+                        <label class="issue-item"><input type="checkbox" value="wrong_direction"> Wrong direction /
+                            action</label>
+                        <label class="issue-item"><input type="checkbox" value="no_movement"> No movement at all</label>
+                        <label class="issue-item"><input type="checkbox" value="jittery"> Jittery / unstable
+                            rendering</label>
+                        <label class="issue-item"><input type="checkbox" value="visual_artifacts"> Visual artifacts /
+                            glitches</label>
+                        <label class="issue-item"><input type="checkbox" value="wrong_action"> Wrong action
+                            performed</label>
+                        <label class="issue-item"><input type="checkbox" value="partial_action"> Partial / incomplete
+                            action</label>
+                        <label class="issue-item"><input type="checkbox" value="camera_wrong"> Camera moved
+                            incorrectly</label>
+                        <label class="issue-item"><input type="checkbox" value="other"> Other</label>
+                    </div>
+                    <textarea id="issue-freetext" class="issue-textarea" placeholder="Optional notes..."></textarea>
+                    <div class="issue-actions">
+                        <button class="btn btn-secondary" onclick="cancelIssues()">Cancel</button>
+                        <button class="btn btn-danger" onclick="confirmBadRating()">Submit Bad Rating</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- RESULTS PAGE                                                    -->
+        <!-- ============================================================= -->
+        <section id="page-results" class="page">
+            <div class="page-header">
+                <h1>Results</h1>
+            </div>
+            <div class="results-container" id="results-container">
+                <div class="empty-state">No scores computed yet. Complete some evaluations first.</div>
+            </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- SETTINGS PAGE                                                   -->
+        <!-- ============================================================= -->
+        <section id="page-settings" class="page">
+            <div class="page-header">
+                <span>
+                    <h1>Settings</h1>
+
+                </span>
+            </div>
+
+            <div class="settings-form">
+                <div class="form-section">
+                    <h3>WandB Connection</h3>
+                    <div class="form-group">
+                        <label for="setting-api-key">API Key</label>
+                        <div class="input-row">
+                            <input type="password" id="setting-api-key" placeholder="Enter WandB API key"
+                                class="form-input">
+                            <button class="btn btn-sm" onclick="toggleKeyVisibility()">👁</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-entity">Entity</label>
+                        <input type="text" id="setting-entity" class="form-input" placeholder="e.g. kaiqin_kong_ucsd">
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-project">Project</label>
+                        <input type="text" id="setting-project" class="form-input" placeholder="e.g. wangame_1.3b">
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-run-id">Default Run ID</label>
+                        <input type="text" id="setting-run-id" class="form-input" placeholder="e.g. fif3z1z4">
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                        <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                    </div>
+                    <div id="settings-status" class="settings-status hidden"></div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Evaluator</h3>
+                    <div class="form-group">
+                        <label for="setting-evaluator">Your Name</label>
+                        <input type="text" id="setting-evaluator" class="form-input" value="evaluator"
+                            placeholder="Your name for ratings">
+                    </div>
+                </div>
+
+                <div class="form-section muted">
+                    <h3>Server Info</h3>
+                    <div id="server-health" class="server-health">Checking...</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

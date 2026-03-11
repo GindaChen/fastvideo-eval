@@ -12,6 +12,7 @@ config.yaml
 
 # Video cache
 cache/
+tmp/
 
 # Database
 *.db
