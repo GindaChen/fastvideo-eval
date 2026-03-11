@@ -1,59 +1,63 @@
-"""Tests for WandB client — normalization helpers and mocked API calls."""
+"""Tests for WandB client — video entry extraction and caption sorting."""
 
 from __future__ import annotations
 
-from app.wandb_client.client import WandBClient
+from app.wandb_client.client import WandBClient, _caption_sort_key
 
 
-class TestNormalizePromptId:
+class TestExtractVideoEntries:
 
-    def test_strip_val_prefix(self):
-        assert WandBClient._normalize_prompt_id("val/basic_fwd_flat_01") == "basic_fwd_flat_01"
+    def test_extracts_from_list_values(self):
+        val = {
+            "videos": [
+                {"_type": "video-file", "caption": "00 Val-00: W", "sha256": "abc", "path": "media/v1.mp4"},
+                {"_type": "video-file", "caption": "01 Val-01: S", "sha256": "def", "path": "media/v2.mp4"},
+            ]
+        }
+        entries = WandBClient._extract_video_entries(val)
+        assert len(entries) == 2
+        assert entries[0]["caption"] == "00 Val-00: W"
+        assert entries[1]["caption"] == "01 Val-01: S"
 
-    def test_strip_validation_prefix(self):
-        assert WandBClient._normalize_prompt_id("validation/W_only_easy") == "w_only_easy"
+    def test_extracts_from_direct_dict_values(self):
+        val = {
+            "0": {"_type": "video-file", "caption": "00 Val-00: W", "sha256": "abc"},
+            "1": {"_type": "video-file", "caption": "01 Val-01: S", "sha256": "def"},
+        }
+        entries = WandBClient._extract_video_entries(val)
+        assert len(entries) == 2
 
-    def test_strip_videos_prefix(self):
-        assert WandBClient._normalize_prompt_id("videos/test_prompt") == "test_prompt"
+    def test_ignores_non_video_entries(self):
+        val = {
+            "_type": "videos",
+            "count": 32,
+            "0": {"_type": "video-file", "caption": "00 Val-00: W", "sha256": "abc"},
+        }
+        entries = WandBClient._extract_video_entries(val)
+        assert len(entries) == 1
+        assert entries[0]["caption"] == "00 Val-00: W"
 
-    def test_spaces_to_underscores(self):
-        assert WandBClient._normalize_prompt_id("Basic Fwd Flat 01") == "basic_fwd_flat_01"
+    def test_empty_dict(self):
+        assert WandBClient._extract_video_entries({}) == []
 
-    def test_hyphens_to_underscores(self):
-        assert WandBClient._normalize_prompt_id("basic-fwd-flat-01") == "basic_fwd_flat_01"
-
-    def test_strip_mp4_extension(self):
-        assert WandBClient._normalize_prompt_id("prompt_name.mp4") == "prompt_name"
-
-    def test_lowercase(self):
-        assert WandBClient._normalize_prompt_id("MyPrompt") == "myprompt"
-
-    def test_combined_normalization(self):
-        assert WandBClient._normalize_prompt_id("val/W Only Easy.mp4") == "w_only_easy"
+    def test_non_dict_returns_empty(self):
+        assert WandBClient._extract_video_entries("not a dict") == []
+        assert WandBClient._extract_video_entries(42) == []
+        assert WandBClient._extract_video_entries(None) == []
 
 
-class TestExtractVideoUrl:
+class TestCaptionSortKey:
 
-    def test_plain_mp4_url(self):
-        assert WandBClient._extract_video_url("https://cdn.wandb.ai/v.mp4") == "https://cdn.wandb.ai/v.mp4"
+    def test_basic_caption(self):
+        assert _caption_sort_key("00 Val-00: W") == 0
+        assert _caption_sort_key("31 Doom-03: key+camera excl rand") == 31
 
-    def test_non_mp4_string_returns_none(self):
-        assert WandBClient._extract_video_url("just a string") is None
+    def test_two_digit_index(self):
+        assert _caption_sort_key("08 Val-00: key rand") == 8
+        assert _caption_sort_key("16 Val-04: (simultaneous) key rand") == 16
 
-    def test_dict_video_file_type(self):
-        val = {"_type": "video-file", "path": "media/videos/step_500.mp4"}
-        assert WandBClient._extract_video_url(val) == "media/videos/step_500.mp4"
+    def test_non_numeric_prefix(self):
+        assert _caption_sort_key("unknown caption") == 999
 
-    def test_dict_with_url(self):
-        val = {"url": "https://example.com/video.mp4"}
-        assert WandBClient._extract_video_url(val) == "https://example.com/video.mp4"
-
-    def test_dict_without_video_returns_none(self):
-        val = {"_type": "table", "data": []}
-        assert WandBClient._extract_video_url(val) is None
-
-    def test_none_input(self):
-        assert WandBClient._extract_video_url(None) is None
-
-    def test_integer_input(self):
-        assert WandBClient._extract_video_url(42) is None
+    def test_empty_string(self):
+        assert _caption_sort_key("") == 999

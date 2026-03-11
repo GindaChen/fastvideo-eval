@@ -35,7 +35,8 @@ Important boundary:
 - Stream pre-rendered validation videos from WandB into a purpose-built evaluation UI.
 - Support single-person sequential evaluation as the primary mode, scaling to multi-person parallel evaluation when needed.
 - Rate each video independently (good / bad / skip) — never compare two checkpoints side-by-side.
-- Capture structured failure reasons via category-specific issue checklists.
+- Allow re-rating: navigating back to a rated video and re-rating inserts a new append-only record.
+- Capture structured failure reasons via a separate Review page (tag-based issue assignment + free text).
 - Aggregate per-video ratings into per-task scores and overall checkpoint rankings.
 - Expand prompt coverage from 32 → ~120 prompts with balanced task × scene difficulty.
 - Deliver checkpoint decision within 20 minutes of evaluation start.
@@ -68,16 +69,30 @@ Important boundary:
    - Provides the issue checklist template for each task category.
 
 3. **Chunk Distributor**
-   - Splits a checkpoint's videos into chunks of ~20 videos each.
+   - Splits a checkpoint's videos into configurable chunks (default 50, options: 20/50/100/200 + custom).
    - Tracks chunk claim status (not started / in progress / done).
+   - Prefetch count configurable (default 8, options: 4/8/16/32).
    - Designed for single-person sequential use; scales to parallel claims.
 
 4. **Evaluation App (Frontend)**
    - Tinder-style video card UI for fast rating.
-   - Plays pre-rendered WandB videos at 1x / 2x / 3x speed.
-   - Three rating actions: Good (✅), Bad (❌ + issue checklist), Skip (⏭).
-   - Swipe gestures on mobile, keyboard shortcuts on desktop.
-   - Progress tracking per chunk.
+   - Plays pre-rendered WandB videos at 1x / 2x / 3x / 4x speed.
+   - Three rating actions: Good (L key), Bad (J key), Skip (K key).
+   - Arrow keys navigate between videos without submitting a rating.
+   - Re-rating supported: navigating back to a rated video and rating again inserts a new append-only record.
+   - Overlay sidebar (hamburger ☰ toggle) with pages: Dashboard, Evaluate, Review, Results, Settings.
+   - Video loading indicator (⏳ overlay while buffering).
+   - Video size adjustable 40%–100% of viewport width (default 90%, persisted in localStorage).
+   - Speed, size, chunk size, and prefetch count all persisted in localStorage.
+   - Progress tracking per chunk with visual dots.
+
+4b. **Review Page**
+   - Separate page for assigning reasons to videos rated bad.
+   - Bad ratings do not prompt for reasons inline — they submit instantly.
+   - Review page lists all bad-rated videos with tag-based issue assignment.
+   - Predefined issue tags: wrong direction, no movement, jittery, visual artifacts, wrong action, incomplete action, camera issue.
+   - Free-text "Other" input for custom reasons.
+   - Issues stored as JSON array in the ratings table; updates via PATCH endpoint.
 
 5. **Rating Store (Backend)**
    - Append-only database for all ratings.

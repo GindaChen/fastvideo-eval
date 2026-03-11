@@ -27,7 +27,9 @@ class WandBConfig:
     """WandB connection settings (SPEC §6.1 wandb section)."""
     project: str
     entity: str
-    api_key: str
+    api_key: str = ""  # Empty = fall back to ~/.netrc
+    default_run_id: str = ""  # Pre-configured run for convenience
+    validation_key: str = "validation_videos_40_steps"
 
 
 @dataclass(frozen=True)
@@ -159,14 +161,16 @@ def load_config(config_path: str | Path | None = None) -> AppConfig:
     if not wandb_section:
         raise ConfigError("Missing required 'wandb' section in config")
 
-    for key in ("project", "entity", "api_key"):
+    for key in ("project", "entity"):
         if key not in wandb_section:
             raise ConfigError(f"Missing required wandb.{key} in config")
 
     wandb_cfg = WandBConfig(
         project=wandb_section["project"],
         entity=wandb_section["entity"],
-        api_key=wandb_section["api_key"],
+        api_key=wandb_section.get("api_key", ""),
+        default_run_id=wandb_section.get("default_run_id", ""),
+        validation_key=wandb_section.get("validation_key", "validation_videos_40_steps"),
     )
 
     eval_section = resolved.get("evaluation", {})

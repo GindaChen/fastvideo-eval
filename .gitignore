@@ -12,10 +12,13 @@ config.yaml
 
 # Video cache
 cache/
+video_cache/
 tmp/
 
 # Database
 *.db
+*.db-shm
+*.db-wal
 
 # Backups
 backups/

@@ -48,13 +48,6 @@ const router = {
     }
 };
 
-document.querySelectorAll('.sidebar-link').forEach(link => {
-    link.addEventListener('click', e => {
-        e.preventDefault();
-        const page = link.dataset.page;
-        if (page) router.navigate(page);
-    });
-});
 
 // --------------------------------------------------------------------------
 // API helpers
@@ -74,20 +67,21 @@ function toast(msg, type = 'info') {
 }
 
 function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    const collapsed = sb.classList.toggle('collapsed');
-    document.getElementById('sidebar-toggle-icon').textContent = collapsed ? '▶' : '◀';
-    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '');
-}
-// Restore sidebar state
-if (localStorage.getItem('sidebarCollapsed')) {
-    document.getElementById('sidebar').classList.add('collapsed');
-    document.getElementById('sidebar-toggle-icon').textContent = '▶';
+    document.getElementById('sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('show');
 }
 
-// --------------------------------------------------------------------------
-// Dashboard
-// --------------------------------------------------------------------------
+// Close sidebar when navigating
+document.querySelectorAll('.sidebar-link').forEach(link => {
+    link.addEventListener('click', e => {
+        e.preventDefault();
+        const page = link.dataset.page;
+        if (page) router.navigate(page);
+        // Close the drawer after navigating
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-backdrop').classList.remove('show');
+    });
+});
 async function loadDashboard() {
     // Use localStorage settings first
     const local = getLocalSettings();
@@ -613,11 +607,11 @@ document.addEventListener('keydown', e => {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
 
     switch (e.key) {
-        case 'ArrowRight': case 'd': case 'D': case 'l': case 'L': flashBtn('btn-good'); submitRating('good'); break;
-        case 'ArrowLeft': case 'a': case 'A': case 'j': case 'J': flashBtn('btn-bad'); submitRating('bad'); break;
-        case 'ArrowUp': case 'w': case 'W': case 'k': case 'K': flashBtn('btn-skip'); submitRating('skip'); break;
-        case 'q': case 'Q': goBack(); break;
-        case 'e': case 'E': goForward(); break;
+        case 'l': case 'L': flashBtn('btn-good'); submitRating('good'); break;
+        case 'j': case 'J': flashBtn('btn-bad'); submitRating('bad'); break;
+        case 'k': case 'K': flashBtn('btn-skip'); submitRating('skip'); break;
+        case 'ArrowLeft': case 'a': case 'A': case 'q': case 'Q': goBack(); break;
+        case 'ArrowRight': case 'd': case 'D': case 'e': case 'E': goForward(); break;
         case 'Escape': restartEval(); break;
         case 'r': case 'R':
             document.getElementById('eval-video').currentTime = 0;

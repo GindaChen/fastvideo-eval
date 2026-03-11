@@ -17,11 +17,17 @@
 </head>
 
 <body>
-    <!-- Sidebar Navigation -->
+    <!-- Hamburger toggle -->
+    <button class="hamburger" id="hamburger" onclick="toggleSidebar()" title="Menu">☰</button>
+
+    <!-- Sidebar backdrop (click to close) -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
+
+    <!-- Sidebar drawer -->
     <aside id="sidebar" class="sidebar">
         <div class="sidebar-brand">
             <span class="sidebar-icon">🎮</span>
-            <span class="sidebar-title">WanGame</span>
+            <span class="sidebar-title">WanGame Eval</span>
         </div>
         <nav class="sidebar-nav">
             <a href="#" data-page="dashboard" class="sidebar-link active">
@@ -40,9 +46,7 @@
                 <span class="sl-icon">⚙️</span><span class="sl-label">Settings</span>
             </a>
         </nav>
-        <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
-            <span id="sidebar-toggle-icon">◀</span>
-        </button>
+        <div class="sidebar-footer">v0.1</div>
     </aside>
 
     <!-- Main Content -->

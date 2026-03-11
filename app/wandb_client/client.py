@@ -1,10 +1,17 @@
 """WandB client for WanGame Eval (SPEC §8).
 
-Implements the four required operations:
+Implements the core operations:
   1. List runs — fetch all runs in the project
-  2. Fetch validation videos — for a given run + step
-  3. Fetch prompt metadata — action labels, sequences
-  4. Fetch optical flow scores — automated pre-filter scores
+  2. List checkpoints — find steps with validation videos (via file listing)
+  3. Fetch videos — retrieve caption-indexed video entries for a step
+  4. Fetch optical flow — automated pre-filter scores
+
+Data structure (verified on run fif3z1z4 / MC_long_run):
+  - Videos logged as `validation_videos_40_steps` at every 500 steps
+  - Each entry is a dict of 32 video-file objects with captions
+  - Captions like "00 Val-00: W" are the prompt identifiers
+  - SHA256 content hash maps to filename: sha256[:20] = filename suffix
+  - Hash changes every step (content hash, NOT prompt ID)
 
 Error handling follows SPEC §8.4:
   - Exponential backoff for rate limits (1s → 60s)
@@ -15,6 +22,7 @@ Error handling follows SPEC §8.4:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -26,6 +34,7 @@ from app.wandb_client.models import (
     CheckpointInfo,
     CheckpointSource,
     IngestionResult,
+    PromptInfo,
     RunInfo,
     VideoInfo,
     VideoStatus,
@@ -33,6 +42,11 @@ from app.wandb_client.models import (
 from app.wandb_client.cache import VideoCache
 
 logger = logging.getLogger("wangame.wandb")
+
+# Regex page for parsing video filenames
+_STEP_PATTERN = re.compile(
+    r"validation_videos_40_steps_(\d+)_([a-f0-9]+)\.mp4$"
+)
 
 
 class WandBClientError(Exception):
@@ -61,13 +75,21 @@ class WandBClient:
 
     @property
     def api(self) -> wandb_sdk.Api:
-        """Lazily initialize the WandB API client."""
+        """Lazily initialize the WandB API client.
+
+        Uses api_key from config if provided, otherwise falls back
+        to ~/.netrc authentication.
+        """
         if self._api is None:
             logger.info(
                 "Initializing WandB API for %s/%s",
                 self.config.entity, self.config.project,
             )
-            self._api = wandb_sdk.Api(api_key=self.config.api_key)
+            kwargs: dict[str, Any] = {}
+            if self.config.api_key:
+                kwargs["api_key"] = self.config.api_key
+            # If no api_key, wandb.Api() will use ~/.netrc automatically
+            self._api = wandb_sdk.Api(**kwargs)
         return self._api
 
     @property
@@ -117,65 +139,61 @@ class WandBClient:
         return result
 
     # --------------------------------------------------------------------- #
-    # 2. List Checkpoints for a Run
+    # 2. List Checkpoints for a Run (via file listing — fast)
     # --------------------------------------------------------------------- #
 
     def list_checkpoints(
         self,
         run_id: str,
-        validation_key: str = "validation",
     ) -> list[CheckpointInfo]:
-        """Scan a run's history to find steps with validation data.
+        """Find all steps with validation videos by scanning file names.
 
-        A checkpoint is any step where ``validation_key`` appears in the
-        logged history — this is where validation videos were generated.
+        Uses run.files() instead of scan_history for speed — the file
+        listing is much faster on large runs (81k+ steps).
 
         Args:
             run_id: WandB run ID.
-            validation_key: History key that indicates a validation step.
 
         Returns:
             List of CheckpointInfo sorted by training step.
         """
-        logger.info("Scanning checkpoints for run %s", run_id)
+        logger.info("Scanning checkpoints for run %s (via file listing)", run_id)
         run = self._retry_api_call(
             lambda: self.api.run(f"{self.project_path}/{run_id}")
         )
 
-        # Use scan_history for complete iteration (not sampled)
-        history = self._retry_api_call(
-            lambda: list(run.scan_history(
-                keys=["_step"],
-                page_size=1000,
-            ))
-        )
+        files = self._retry_api_call(lambda: list(run.files()))
 
-        checkpoints = []
-        seen_steps = set()
-        for row in history:
-            step = int(row.get("_step", 0))
-            if step in seen_steps:
+        # Group video files by step number
+        step_counts: dict[int, int] = {}
+        for f in files:
+            if not f.name.endswith(".mp4"):
                 continue
-            seen_steps.add(step)
+            m = _STEP_PATTERN.search(f.name)
+            if m:
+                step = int(m.group(1))
+                step_counts[step] = step_counts.get(step, 0) + 1
 
-            # Check if this step has validation data
-            # For now, include all steps that are multiples of 500
-            # (validation happens every 500 steps per AGENTS.md)
-            if step > 0 and step % 500 == 0:
-                ckpt = CheckpointInfo(
-                    checkpoint_id=CheckpointInfo.make_id(run_id, step),
-                    training_step=step,
-                    wandb_run_id=run_id,
-                    source=CheckpointSource.ROUND_NUMBER,
-                )
-                checkpoints.append(ckpt)
+        checkpoints = [
+            CheckpointInfo(
+                checkpoint_id=CheckpointInfo.make_id(run_id, step),
+                training_step=step,
+                wandb_run_id=run_id,
+                video_count=count,
+                source=CheckpointSource.ROUND_NUMBER,
+            )
+            for step, count in step_counts.items()
+        ]
 
         checkpoints.sort(key=lambda c: c.training_step)
-        logger.info("Found %d checkpoints for run %s", len(checkpoints), run_id)
+        logger.info(
+            "Found %d checkpoints for run %s (%d total videos)",
+            len(checkpoints), run_id, sum(step_counts.values()),
+        )
         return checkpoints
 
     # --------------------------------------------------------------------- #
-    # 3. Fetch Videos for a Checkpoint (SPEC §8.1, §8.2)
+    # 3. Fetch Videos for a Checkpoint (caption-based — SPEC §8.1, §8.2)
     # --------------------------------------------------------------------- #
 
     def fetch_videos(
@@ -183,17 +201,19 @@ class WandBClient:
         run_id: str,
         step: int,
     ) -> list[VideoInfo]:
-        """Retrieve validation video URLs for a given run + step.
+        """Retrieve validation videos for a given run + step.
 
-        Scans the run history at the specified step for any logged media
-        (videos). Normalizes URLs to direct-download format (SPEC §8.2).
+        Scans the run history at the specified step for the
+        `validation_videos_40_steps` entry, which contains a dict of
+        32 video-file objects. Each has a caption (prompt ID), sha256
+        (content hash), path (WandB filename), and size.
 
         Args:
             run_id: WandB run ID.
             step: Training step number.
 
         Returns:
-            List of VideoInfo objects for videos found at this step.
+            List of VideoInfo objects sorted by caption index.
         """
         checkpoint_id = CheckpointInfo.make_id(run_id, step)
         logger.info("Fetching videos for %s at step %d", run_id, step)
@@ -202,48 +222,85 @@ class WandBClient:
             lambda: self.api.run(f"{self.project_path}/{run_id}")
         )
 
-        # Scan history at the specific step for video keys
+        # Scan history at the specific step for the validation key
+        validation_key = self.config.validation_key
         history_rows = self._retry_api_call(
             lambda: list(run.scan_history(
-                min_step=step,
+                min_step=step - 1,
                 max_step=step + 1,
-                page_size=100,
+                keys=["_step", validation_key],
+                page_size=10,
             ))
         )
 
-        videos = []
+        videos: list[VideoInfo] = []
         for row in history_rows:
             row_step = int(row.get("_step", -1))
             if row_step != step:
                 continue
 
-            # Walk all keys looking for wandb.Video objects
-            for key, value in row.items():
-                if key.startswith("_"):
-                    continue
+            val = row.get(validation_key)
+            if val is None:
+                continue
 
-                video_url = self._extract_video_url(value)
-                if video_url is None:
-                    continue
+            # Extract video-file entries from the validation dict
+            raw_videos = self._extract_video_entries(val)
 
-                # Derive prompt_id from the key name
-                # WandB keys are typically like "val/prompt_name" or "validation/basic_fwd_flat_01"
-                prompt_id = self._normalize_prompt_id(key)
+            for entry in raw_videos:
+                caption = entry.get("caption", "")
+                sha256 = entry.get("sha256", "")
+                path = entry.get("path", "")
+                size = entry.get("size")
 
+                # Parse caption into structured prompt info
+                prompt = PromptInfo.from_caption(caption)
+
+                # Build the video URL from the file path
+                # The URL will be resolved via run.file(path).url at download time
                 video = VideoInfo(
-                    video_id=VideoInfo.make_id(checkpoint_id, prompt_id),
+                    video_id=VideoInfo.make_id(checkpoint_id, prompt.prompt_id),
                     checkpoint_id=checkpoint_id,
-                    prompt_id=prompt_id,
-                    wandb_url=video_url,
+                    prompt_id=prompt.prompt_id,
+                    wandb_url="",  # Resolved lazily via wandb_path
+                    wandb_path=path,
                     training_step=step,
+                    caption=caption,
+                    sha256=sha256,
+                    action_label=prompt.action_label,
+                    size_bytes=int(size) if size else 0,
                 )
                 videos.append(video)
+
+            break  # Found the step, no need to continue
+
+        # Sort by caption index (parsed from the "NN" prefix)
+        videos.sort(key=lambda v: _caption_sort_key(v.caption))
 
         logger.info(
             "Found %d videos for %s at step %d",
             len(videos), run_id, step,
         )
         return videos
+
+    def fetch_captions(
+        self,
+        run_id: str,
+        step: int,
+    ) -> list[PromptInfo]:
+        """Fetch the ordered list of prompt captions for a step.
+
+        Convenience wrapper: calls fetch_videos() and extracts the
+        caption metadata for each video.
+
+        Args:
+            run_id: WandB run ID.
+            step: Training step number.
+
+        Returns:
+            List of PromptInfo objects sorted by caption index.
+        """
+        videos = self.fetch_videos(run_id, step)
+        return [PromptInfo.from_caption(v.caption) for v in videos]
 
     # --------------------------------------------------------------------- #
     # 4. Fetch Optical Flow Scores (SPEC §8.1)
@@ -252,19 +309,19 @@ class WandBClient:
     def fetch_optical_flow(
         self,
         run_id: str,
-        metric_key: str = "optical_flow",
+        metric_key: str = "metrics/mf_angle_err_mean",
     ) -> dict[int, float]:
-        """Retrieve optical flow scores for checkpoint pre-filtering.
+        """Retrieve optical flow / metric scores for checkpoint pre-filtering.
 
         Args:
             run_id: WandB run ID.
-            metric_key: History key containing the optical flow metric.
+            metric_key: History key containing the metric.
 
         Returns:
-            Dict mapping training step → optical flow score.
+            Dict mapping training step → score.
             Missing scores are omitted (not zero — SPEC §8.2).
         """
-        logger.info("Fetching optical flow scores for run %s", run_id)
+        logger.info("Fetching metrics ('%s') for run %s", metric_key, run_id)
         run = self._retry_api_call(
             lambda: self.api.run(f"{self.project_path}/{run_id}")
         )
@@ -285,12 +342,12 @@ class WandBClient:
                     scores[step] = float(score)
                 except (TypeError, ValueError):
                     logger.warning(
-                        "Invalid optical flow value at step %d: %r",
+                        "Invalid metric value at step %d: %r",
                         step, score,
                     )
 
         logger.info(
-            "Found optical flow scores for %d steps in run %s",
+            "Found metric scores for %d steps in run %s",
             len(scores), run_id,
         )
         return scores
@@ -347,13 +404,38 @@ class WandBClient:
 
         result.videos_found = len(videos)
 
-        # Download each video
+        # Resolve URLs and download each video
+        run = self._retry_api_call(
+            lambda: self.api.run(f"{self.project_path}/{run_id}")
+        )
+
         for video in videos:
             if self.cache.is_cached(video):
                 result.videos_cached += 1
                 continue
 
             try:
+                # Resolve the WandB path to a download URL
+                if video.wandb_path and not video.wandb_url:
+                    try:
+                        f = run.file(video.wandb_path)
+                        url = f.url
+                    except Exception:
+                        url = video.wandb_url
+                    # Create a new VideoInfo with resolved URL
+                    video = VideoInfo(
+                        video_id=video.video_id,
+                        checkpoint_id=video.checkpoint_id,
+                        prompt_id=video.prompt_id,
+                        wandb_url=url,
+                        wandb_path=video.wandb_path,
+                        training_step=video.training_step,
+                        caption=video.caption,
+                        sha256=video.sha256,
+                        action_label=video.action_label,
+                        size_bytes=video.size_bytes,
+                    )
+
                 self.cache.get_or_download(video)
                 result.videos_downloaded += 1
             except Exception as exc:
@@ -423,61 +505,40 @@ class WandBClient:
         raise last_error  # type: ignore[misc]
 
     # --------------------------------------------------------------------- #
-    # URL / ID normalization helpers (SPEC §8.2)
+    # Video entry extraction helpers
     # --------------------------------------------------------------------- #
 
     @staticmethod
-    def _extract_video_url(value: Any) -> Optional[str]:
-        """Extract a direct-download video URL from a WandB history value.
+    def _extract_video_entries(val: Any) -> list[dict]:
+        """Extract video-file entries from a WandB validation log entry.
 
-        WandB log entries for media can be:
-        - A dict with {"_type": "video-file", "path": "media/videos/..."} 
-        - A wandb.data_types.Video object
-        - A plain string URL
+        The `validation_videos_40_steps` value is a dict that can contain:
+        - Direct video-file dicts as values
+        - Lists of video-file dicts
+        - Nested structures
+
+        Returns a flat list of dicts with _type="video-file".
         """
-        if isinstance(value, str) and value.endswith(".mp4"):
-            return value
+        entries: list[dict] = []
 
-        if isinstance(value, dict):
-            # WandB media reference format
-            if value.get("_type") in ("video-file", "video"):
-                path = value.get("path", "")
-                if path:
-                    # The path is relative to the run's file storage
-                    # Caller will need to resolve to full URL via run.files()
-                    return path
-            # Direct URL in a dict
-            url = value.get("url", "")
-            if url and ".mp4" in url:
-                return url
+        if not isinstance(val, dict):
+            return entries
 
-        # Check for wandb Video data type
-        if hasattr(value, "_path") and value._path:
-            return value._path
+        for key, item in val.items():
+            if isinstance(item, list):
+                for entry in item:
+                    if isinstance(entry, dict) and entry.get("_type") == "video-file":
+                        entries.append(entry)
+            elif isinstance(item, dict) and item.get("_type") == "video-file":
+                entries.append(item)
 
-        return None
+        return entries
 
-    @staticmethod
-    def _normalize_prompt_id(key: str) -> str:
-        """Normalize a WandB log key to a prompt_id (SPEC §8.2).
 
-        Examples:
-            "val/basic_fwd_flat_01" → "basic_fwd_flat_01"
-            "validation/W_only_easy" → "w_only_easy"
-            "Basic Fwd Flat 01" → "basic_fwd_flat_01"
-        """
-        # Strip common prefixes
-        for prefix in ("val/", "validation/", "videos/", "media/"):
-            if key.startswith(prefix):
-                key = key[len(prefix):]
+def _caption_sort_key(caption: str) -> int:
+    """Extract the numeric index from a caption for sorting.
 
-        # Lowercase and normalize
-        key = key.lower().strip()
-        key = key.replace(" ", "_").replace("-", "_")
-
-        # Remove file extension if present
-        for ext in (".mp4", ".webm", ".gif"):
-            if key.endswith(ext):
-                key = key[: -len(ext)]
-
-        return key
+    "00 Val-00: W" → 0, "31 Doom-03: key+camera excl rand" → 31
+    """
+    m = re.match(r"^(\d+)", caption)
+    return int(m.group(1)) if m else 999
