@@ -2,6 +2,61 @@
 
 **Mission:** Build a scalable, task-based evaluation pipeline for the WanGame 1.3B Minecraft World Model — replacing ad-hoc eyeballing with structured, team-parallel human evaluation that delivers results in under 20 minutes post-training.
 
+## Quick Start
+
+### Prerequisites
+
+- Python ≥ 3.10
+- A [WandB](https://wandb.ai) account with access to the training project
+
+### 1. Install
+
+```bash
+git clone https://github.com/GindaChen/wangame-eval.git
+cd wangame-eval
+pip install -e .
+```
+
+### 2. Get your WandB API Key
+
+Go to **[wandb.ai/authorize](https://wandb.ai/authorize)** → copy your API key. You'll need this to stream videos from the training runs.
+
+### 3. Start the server
+
+```bash
+python run.py --port 8765
+```
+
+This will:
+- Create a SQLite database (`eval.db`) automatically on first run
+- Serve the frontend at `http://localhost:8765`
+- Expose API docs at `http://localhost:8765/docs`
+
+### 4. Configure
+
+Open `http://localhost:8765` and go to **Settings**:
+1. Paste your **WandB API Key**
+2. Set **Entity** (default: `kaiqin_kong_ucsd`)
+3. Set **Project** (default: `wangame_1.3b`)
+4. Set **Run ID** (default: `fif3z1z4`)
+5. Click **Save Settings** → **Test Connection**
+
+### 5. Start evaluating
+
+| Page | Purpose |
+|---|---|
+| **Dashboard** | Overview stats, chunk progress, quick actions |
+| **Evaluate** | Tinder-style card view — rate videos Good/Bad/Skip |
+| **Review** | Overview of all rated videos + card-based reason tagger for bad videos |
+| **Matrix** | Side-by-side grid (rows=prompts, cols=steps) for desktop comparison |
+| **Results** | Per-checkpoint scores and rankings |
+
+**Keyboard shortcuts (Evaluate):** J=Bad, K=Skip, L=Good, ←→=Navigate, 1-4=Speed, Space=Play/Pause
+
+**Keyboard shortcuts (Matrix):** Arrow keys=Navigate cells, J/K/L=Rate, Tab=Cycle, Space=Play/Pause
+
+**Keyboard shortcuts (Reason Tagger):** 1-9=Toggle reasons, Enter/Space=Save & advance, K=Skip
+
 ## Mission Overview
 
 ```mermaid
@@ -13,15 +68,9 @@ graph LR
     E --> F[Checkpoint decision<br/>in < 20 min]
 ```
 
-## Why This Repo Exists
-
-We train a world model that generates Minecraft gameplay video from a starting frame + action sequence. The model handles 23 distinct action types, but we currently have no scalable way to evaluate checkpoint quality. Our automated metric (optical flow) is unreliable, and manual eyeballing on 32 ad-hoc prompts doesn't cover enough ground.
-
-This repo is the home for everything needed to fix that — from evaluation design to tooling to results.
-
 ## Current Status
 
-🟡 **Design phase** — Evaluation architecture is defined (see docs). Implementation has not started.
+🟢 **In Progress** — Evaluation app is functional with video streaming, rating, matrix comparison, and review workflow.
 
 ---
 
