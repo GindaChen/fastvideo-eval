@@ -36,6 +36,7 @@ from app.wandb_client.models import (
     IngestionResult,
     PromptInfo,
     RunInfo,
+    RunProbeResult,
     VideoInfo,
     VideoStatus,
 )
@@ -43,10 +44,21 @@ from app.wandb_client.cache import VideoCache
 
 logger = logging.getLogger("wangame.wandb")
 
-# Regex page for parsing video filenames
+# Regex page for parsing video filenames — built dynamically from validation_key
 _STEP_PATTERN = re.compile(
     r"validation_videos_40_steps_(\d+)_([a-f0-9]+)\.mp4$"
 )
+
+
+def _build_step_pattern(validation_key: str) -> re.Pattern:
+    """Build a regex that matches MP4 filenames for the given validation key.
+
+    Handles two naming variants observed across runs:
+      - validation_videos_40_steps_{step}_{hash}.mp4   (wangame_1.3b)
+      - validation_videos_50_steps_{step}_{hash}.mp4   (mg_finetune_solaris)
+    """
+    escaped = re.escape(validation_key)
+    return re.compile(rf"{escaped}_(\d+)_([a-f0-9]+)\.mp4$")
 
 
 class WandBClientError(Exception):
@@ -164,12 +176,15 @@ class WandBClient:
 
         files = self._retry_api_call(lambda: list(run.files()))
 
+        # Build regex from config's validation_key
+        pattern = _build_step_pattern(self.config.validation_key)
+
         # Group video files by step number
         step_counts: dict[int, int] = {}
         for f in files:
             if not f.name.endswith(".mp4"):
                 continue
-            m = _STEP_PATTERN.search(f.name)
+            m = pattern.search(f.name)
             if m:
                 step = int(m.group(1))
                 step_counts[step] = step_counts.get(step, 0) + 1
@@ -453,6 +468,117 @@ class WandBClient:
             "Ingestion complete: %d found, %d cached, %d downloaded, %d unavailable",
             result.videos_found, result.videos_cached,
             result.videos_downloaded, result.videos_unavailable,
+        )
+        return result
+
+    # --------------------------------------------------------------------- #
+    # Run probing — auto-discover video structure
+    # --------------------------------------------------------------------- #
+
+    def probe_run(self, run_id: str) -> RunProbeResult:
+        """Probe a WandB run to discover its video structure.
+
+        Inspects the run's files, history, and config to determine:
+          - Which history key contains validation videos
+          - What the MP4 filename pattern looks like
+          - What format the captions use
+          - Recommended validation_key for configuration
+
+        Args:
+            run_id: WandB run ID.
+
+        Returns:
+            RunProbeResult with discovered structure information.
+        """
+        logger.info("Probing run %s for video structure", run_id)
+        run = self._retry_api_call(
+            lambda: self.api.run(f"{self.project_path}/{run_id}")
+        )
+
+        config = dict(run.config) if run.config else {}
+        run_name = config.get("wandb_run_name", run.name or run_id)
+        run_state = getattr(run, "state", "unknown")
+
+        result = RunProbeResult(
+            run_id=run_id,
+            run_name=run_name,
+            run_state=run_state,
+            validation_steps=int(config.get("validation_steps", 0)),
+            validation_num_samples=int(config.get("validation_num_samples", 0)),
+        )
+
+        # 1. Scan files for MP4s
+        try:
+            files = self._retry_api_call(lambda: list(run.files()))
+            mp4s = [f for f in files if f.name.endswith(".mp4")]
+            result.mp4_count = len(mp4s)
+            result.sample_filenames = [f.name for f in mp4s[:10]]
+            if len(mp4s) > 10:
+                result.sample_filenames.extend(f.name for f in mp4s[-3:])
+        except Exception as exc:
+            logger.warning("Probe: failed to list files: %s", exc)
+
+        # 2. Scan history for video keys
+        try:
+            rows = self._retry_api_call(
+                lambda: list(run.scan_history(page_size=3))
+            )
+            video_keys: list[str] = []
+            other_keys: list[str] = []
+
+            if rows:
+                for key in sorted(rows[0].keys()):
+                    if key.startswith("_"):
+                        continue
+                    val = rows[0].get(key)
+                    if isinstance(val, dict) and val.get("_type") == "videos":
+                        # Check if this looks like a validation key
+                        if "valid" in key.lower():
+                            video_keys.append(key)
+                        else:
+                            other_keys.append(key)
+
+            result.video_keys = video_keys
+            result.other_video_keys = other_keys
+
+            # Recommend the first validation key found
+            if video_keys:
+                result.recommended_key = video_keys[0]
+            elif other_keys:
+                result.recommended_key = other_keys[0]
+
+            # 3. Extract sample captions from the recommended key
+            if result.recommended_key and rows:
+                val = rows[0].get(result.recommended_key)
+                if isinstance(val, dict):
+                    # Try captions list
+                    captions = val.get("captions", [])
+                    if isinstance(captions, list):
+                        result.sample_captions = captions[:5]
+
+                    # Try extracting from video entries
+                    if not result.sample_captions:
+                        entries = self._extract_video_entries(val)
+                        result.sample_captions = [
+                            e.get("caption", "") for e in entries[:5]
+                        ]
+
+                    # Detect caption format
+                    if result.sample_captions:
+                        sample = result.sample_captions[0]
+                        if re.match(r"^\d+\s+\w+", sample):
+                            result.caption_format = "rich"
+                        elif re.match(r"^\d+$", sample.strip()):
+                            result.caption_format = "simple"
+                        else:
+                            result.caption_format = "unknown"
+
+        except Exception as exc:
+            logger.warning("Probe: failed to scan history: %s", exc)
+
+        logger.info(
+            "Probe complete: run=%s, recommended_key=%s, mp4s=%d, caption_format=%s",
+            run_id, result.recommended_key, result.mp4_count, result.caption_format,
         )
         return result
 

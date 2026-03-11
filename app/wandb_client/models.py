@@ -136,14 +136,32 @@ class PromptInfo:
     def from_caption(caption: str) -> PromptInfo:
         """Parse a WandB video caption into structured prompt info.
 
+        Handles two formats:
+        1. Rich:    "00 Val-00: W", "08 Val-00: key rand", "28 Doom-00: W"
+        2. Simple:  "00", "01", "31" (numeric-only, from newer runs)
+
         Examples:
             "00 Val-00: W"         → PromptInfo(index=0, action="W", ...)
             "08 Val-00: key rand"  → PromptInfo(index=8, action="key rand", ...)
             "26 Train-00"          → PromptInfo(index=26, action="", label="Train-00")
             "28 Doom-00: W"        → PromptInfo(index=28, action="W", ...)
+            "00"                   → PromptInfo(index=0, action="", label="00")
         """
+        # Handle simple numeric captions: "00", "01", "31"
+        if re.match(r"^\d+$", caption.strip()):
+            index = int(caption.strip())
+            return PromptInfo(
+                index=index,
+                caption=caption,
+                prompt_id=f"prompt_{index:02d}",
+                label=caption.strip(),
+                action_label="",
+                category=ActionCategory.SINGLE_KEY,
+                source="",
+            )
+
         # Parse: "NN Label" or "NN Label: Action"
-        m = re.match(r"^(\d+)\s+(.+?)(?::\s*(.+))?$", caption)
+        m = re.match(r"^(\d+)\s+(.+?)(?:\:\s*(.+))?$", caption)
         if not m:
             return PromptInfo(
                 index=0, caption=caption, prompt_id=caption.lower().replace(" ", "_"),
@@ -240,3 +258,32 @@ class IngestionResult:
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
         return None
+
+
+@dataclass
+class RunProbeResult:
+    """Result of probing a WandB run for its video structure.
+
+    Returned by WandBClient.probe_run() to help users configure
+    the eval app for different run types.
+    """
+    run_id: str
+    run_name: str
+    run_state: str
+    # Discovered video keys in history
+    video_keys: list[str] = field(default_factory=list)
+    # Sample MP4 filenames
+    sample_filenames: list[str] = field(default_factory=list)
+    # Total MP4 count
+    mp4_count: int = 0
+    # Sample captions from the first video key
+    sample_captions: list[str] = field(default_factory=list)
+    # Caption format: "rich" ("NN Label: Action") or "simple" ("00")
+    caption_format: str = "unknown"
+    # Recommended validation_key (best guess)
+    recommended_key: str = ""
+    # Config values of interest
+    validation_steps: int = 0
+    validation_num_samples: int = 0
+    # Other reference video keys found
+    other_video_keys: list[str] = field(default_factory=list)

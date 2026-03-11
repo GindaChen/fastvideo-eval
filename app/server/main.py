@@ -67,6 +67,28 @@ def create_app(
     if static_dir:
         static_path = Path(static_dir)
         if static_path.exists():
+            # SPA catch-all: serve index.html for non-API, non-file paths
+            # This lets users bookmark /matrix, /video-matrix, etc.
+            from fastapi.responses import FileResponse
+
+            page_aliases = {
+                "matrix", "video-matrix", "dashboard", "evaluate",
+                "review", "results", "settings",
+            }
+
+            @app.get("/{path:path}")
+            async def spa_fallback(path: str):
+                # Only catch known page routes; let everything else fall through
+                first_segment = path.split("/")[0] if path else ""
+                if first_segment in page_aliases:
+                    return FileResponse(str(static_path / "index.html"))
+                # For unknown paths, try as static file (handled by mount below)
+                # or return 404
+                file_path = static_path / path
+                if file_path.exists() and file_path.is_file():
+                    return FileResponse(str(file_path))
+                return FileResponse(str(static_path / "index.html"))
+
             app.mount("/", StaticFiles(directory=str(static_path), html=True), name="static")
             logger.info("Serving static files from %s", static_path)
 

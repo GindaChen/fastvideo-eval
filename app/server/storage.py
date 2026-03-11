@@ -26,6 +26,7 @@ _DEFAULT_CONFIG = {
     "wandb_entity": "kaiqin_kong_ucsd",
     "wandb_project": "wangame_1.3b",
     "default_run_id": "fif3z1z4",
+    "validation_key": "validation_videos_40_steps",
     "auth_token": "",
 }
 

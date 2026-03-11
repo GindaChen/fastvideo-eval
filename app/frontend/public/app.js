@@ -31,6 +31,12 @@ const state = {
 // --------------------------------------------------------------------------
 const router = {
     navigate(page) {
+        // Sync hash — if hash doesn't match, set it and let hashchange call back
+        const expectedHash = `#/${page}`;
+        if (location.hash !== expectedHash) {
+            location.hash = expectedHash;
+            return;
+        }
         document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
         const el = document.getElementById(`page-${page}`);
@@ -48,6 +54,15 @@ const router = {
         }
     }
 };
+
+// Hash-based routing: listen for hash changes
+window.addEventListener('hashchange', () => {
+    const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
+    // Map friendly aliases
+    const aliases = { 'video-matrix': 'matrix' };
+    const page = aliases[hash] || hash;
+    router.navigate(page);
+});
 
 
 // --------------------------------------------------------------------------
@@ -72,12 +87,9 @@ function toggleSidebar() {
     document.getElementById('sidebar-backdrop').classList.toggle('show');
 }
 
-// Close sidebar when navigating
+// Close sidebar when navigating (hash hrefs handle routing via hashchange)
 document.querySelectorAll('.sidebar-link').forEach(link => {
-    link.addEventListener('click', e => {
-        e.preventDefault();
-        const page = link.dataset.page;
-        if (page) router.navigate(page);
+    link.addEventListener('click', () => {
         document.getElementById('sidebar').classList.remove('open');
         document.getElementById('sidebar-backdrop').classList.remove('show');
     });
@@ -89,6 +101,9 @@ async function loadDashboard() {
     state.runId = local.default_run_id;
     document.getElementById('dash-project-info').textContent =
         `${local.wandb_entity}/${local.wandb_project} • Run: ${local.default_run_id || '(not set)'}`;
+
+    // WandB link
+    updateWandbLink('dash-wandb-link', local);
 
     let totalVideos = 0;
     let committed = 0, skipped = 0;
@@ -118,6 +133,9 @@ async function loadDashboard() {
     document.getElementById('bar-committed').style.width = `${(committed / t * 100)}%`;
     document.getElementById('bar-skipped').style.width = `${(skipped / t * 100)}%`;
     document.getElementById('bar-unrated').style.width = `${(unrated / t * 100)}%`;
+
+    // Also populate settings form (since it's now on dashboard)
+    populateSettingsForm();
 }
 
 // --------------------------------------------------------------------------
@@ -704,7 +722,30 @@ function getLocalSettings() {
         wandb_entity: localStorage.getItem('wandb_entity') || 'kaiqin_kong_ucsd',
         wandb_project: localStorage.getItem('wandb_project') || 'wangame_1.3b',
         default_run_id: localStorage.getItem('default_run_id') || 'fif3z1z4',
+        validation_key: localStorage.getItem('validation_key') || 'validation_videos_40_steps',
     };
+}
+
+// Build WandB run URL from settings
+function getWandbRunUrl(settings) {
+    const entity = settings.wandb_entity;
+    const project = settings.wandb_project;
+    const runId = settings.default_run_id || state.runId;
+    if (!entity || !project || !runId) return null;
+    return `https://wandb.ai/${entity}/${project}/runs/${runId}`;
+}
+
+// Update a WandB link element by ID
+function updateWandbLink(elementId, settings) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const url = getWandbRunUrl(settings || getLocalSettings());
+    if (url) {
+        el.href = url;
+        el.style.display = 'inline-flex';
+    } else {
+        el.style.display = 'none';
+    }
 }
 
 function saveLocalSettings(settings) {
@@ -716,40 +757,49 @@ function saveLocalSettings(settings) {
 }
 
 async function loadSettings() {
-    // Load from localStorage first
+    // Settings are now on the dashboard — redirect there
+    router.navigate('dashboard');
+    setTimeout(() => document.getElementById('settings-section')?.scrollIntoView({ behavior: 'smooth' }), 200);
+}
+
+// Populate settings form fields (called from loadDashboard)
+function populateSettingsForm() {
     const local = getLocalSettings();
-    state.settings = local;
-    state.runId = local.default_run_id;
 
     const keyInput = document.getElementById('setting-api-key');
-    keyInput.value = local.wandb_api_key || '';
-    document.getElementById('setting-entity').value = local.wandb_entity;
-    document.getElementById('setting-project').value = local.wandb_project;
-    document.getElementById('setting-run-id').value = local.default_run_id;
-    document.getElementById('setting-evaluator').value = state.evaluator;
-    // Auto-save evaluator name on change
-    document.getElementById('setting-evaluator').oninput = (e) => {
-        state.evaluator = e.target.value || 'evaluator';
-        localStorage.setItem('evaluator', state.evaluator);
-    };
+    if (keyInput) keyInput.value = local.wandb_api_key || '';
+    const entityInput = document.getElementById('setting-entity');
+    if (entityInput) entityInput.value = local.wandb_entity;
+    const projectInput = document.getElementById('setting-project');
+    if (projectInput) projectInput.value = local.wandb_project;
+    const runInput = document.getElementById('setting-run-id');
+    if (runInput) runInput.value = local.default_run_id;
+    const validationKeyInput = document.getElementById('setting-validation-key');
+    if (validationKeyInput) validationKeyInput.value = local.validation_key;
+    const evalInput = document.getElementById('setting-evaluator');
+    if (evalInput) {
+        evalInput.value = state.evaluator;
+        evalInput.oninput = (e) => {
+            state.evaluator = e.target.value || 'evaluator';
+            localStorage.setItem('evaluator', state.evaluator);
+        };
+    }
 
     // Sync from server in background (won't override localStorage)
-    try {
-        const s = await api('/api/settings');
-        // Only fill empty fields from server
-        if (!local.wandb_api_key && s.wandb_api_key) {
+    api('/api/settings').then(s => {
+        if (!local.wandb_api_key && s.wandb_api_key && keyInput) {
             localStorage.setItem('wandb_api_key', s.wandb_api_key);
-            document.getElementById('setting-api-key').placeholder = '••••••••';
+            keyInput.placeholder = '••••••••';
         }
-    } catch { }
+    }).catch(() => {});
 
-    try {
-        const h = await api('/api/health');
-        document.getElementById('server-health').textContent =
-            `Status: ${h.status} • DB: ${h.database} • Version: ${h.version}`;
-    } catch (err) {
-        document.getElementById('server-health').textContent = `Error: ${err.message}`;
-    }
+    api('/api/health').then(h => {
+        const el = document.getElementById('server-health');
+        if (el) el.textContent = `Status: ${h.status} • DB: ${h.database} • Version: ${h.version}`;
+    }).catch(err => {
+        const el = document.getElementById('server-health');
+        if (el) el.textContent = `Error: ${err.message}`;
+    });
 }
 
 async function saveSettings() {
@@ -759,6 +809,7 @@ async function saveSettings() {
     settings.wandb_entity = document.getElementById('setting-entity').value;
     settings.wandb_project = document.getElementById('setting-project').value;
     settings.default_run_id = document.getElementById('setting-run-id').value;
+    settings.validation_key = document.getElementById('setting-validation-key').value || 'validation_videos_40_steps';
 
     state.evaluator = document.getElementById('setting-evaluator').value || 'evaluator';
     localStorage.setItem('evaluator', state.evaluator);
@@ -789,6 +840,113 @@ async function testConnection() {
 function toggleKeyVisibility() {
     const i = document.getElementById('setting-api-key');
     i.type = i.type === 'password' ? 'text' : 'password';
+}
+
+async function probeRun() {
+    const runId = document.getElementById('setting-run-id').value.trim();
+    if (!runId) {
+        toast('Enter a Run ID first', 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn-probe');
+    const oldText = btn.textContent;
+    btn.textContent = '⏳ Probing...';
+    btn.disabled = true;
+
+    // Save current settings first so the API key is available server-side
+    await saveSettings();
+
+    try {
+        const entity = document.getElementById('setting-entity').value.trim();
+        const project = document.getElementById('setting-project').value.trim();
+
+        const result = await api('/api/runs/probe', {
+            method: 'POST',
+            body: JSON.stringify({
+                run_id: runId,
+                entity: entity || undefined,
+                project: project || undefined,
+            }),
+        });
+
+        // Show results panel
+        const panel = document.getElementById('probe-results');
+        const body = document.getElementById('probe-results-body');
+        panel.classList.remove('hidden');
+
+        const recKey = result.recommended_key || '(none found)';
+        const captionFmt = result.caption_format === 'rich'
+            ? '✅ Rich ("00 Val-00: W")'
+            : result.caption_format === 'simple'
+                ? '📋 Simple ("00", "01", ...)'
+                : '❓ Unknown';
+
+        body.innerHTML = `
+            <div class="probe-detail">
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Run Name</span>
+                    <span class="probe-detail-value">${result.run_name} (${result.run_state})</span>
+                </div>
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Validation Key</span>
+                    <span class="probe-detail-value" style="color:var(--good)">${recKey}</span>
+                </div>
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Caption Format</span>
+                    <span class="probe-detail-value">${captionFmt}</span>
+                </div>
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">MP4 Files</span>
+                    <span class="probe-detail-value">${result.mp4_count} videos found</span>
+                </div>
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Val Steps</span>
+                    <span class="probe-detail-value">${result.validation_steps || '(not set)'}</span>
+                </div>
+                ${result.video_keys.length > 0 ? `
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Video Keys</span>
+                    <span class="probe-detail-value">${result.video_keys.join(', ')}</span>
+                </div>` : ''}
+                ${result.other_video_keys.length > 0 ? `
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Other Keys</span>
+                    <span class="probe-detail-value">${result.other_video_keys.join(', ')}</span>
+                </div>` : ''}
+                ${result.sample_captions.length > 0 ? `
+                <div class="probe-detail-row">
+                    <span class="probe-detail-label">Sample Captions</span>
+                    <span class="probe-detail-value">${result.sample_captions.slice(0, 5).join(', ')}</span>
+                </div>` : ''}
+            </div>
+            ${result.sample_filenames.length > 0 ? `
+                <div class="probe-filenames">${result.sample_filenames.join('\n')}</div>
+            ` : ''}
+            ${result.recommended_key ? `
+                <button class="btn btn-primary btn-sm btn-apply-probe" onclick="applyProbeResult('${result.recommended_key}')">✅ Apply: ${result.recommended_key}</button>
+            ` : '<div style="color:var(--bad);margin-top:8px">⚠ No validation video key found in this run.</div>'}
+        `;
+
+        toast(`Probe complete: found ${result.mp4_count} videos`, 'success');
+    } catch (err) {
+        toast(`Probe failed: ${err.message}`, 'error');
+    } finally {
+        btn.textContent = oldText;
+        btn.disabled = false;
+    }
+}
+
+function applyProbeResult(key) {
+    const input = document.getElementById('setting-validation-key');
+    if (input) {
+        input.value = key;
+        input.classList.add('entering');
+        setTimeout(() => input.classList.remove('entering'), 300);
+    }
+    toast(`Validation key set to: ${key}`, 'success');
+    // Auto-save
+    saveSettings();
 }
 
 // --------------------------------------------------------------------------
@@ -1132,8 +1290,32 @@ async function loadMatrix() {
         matrixState.numPrompts = m.num_prompts;
         document.getElementById('matrix-subtitle').textContent = `${m.run_name} • ${m.steps.length} steps × ${m.num_prompts} prompts = ${m.total_videos.toLocaleString()} videos`;
 
-        // Default: pick last 3 steps, Single Key category
-        matrixState.selectedSteps = new Set(m.steps.slice(-3));
+        // Show WandB link
+        updateWandbLink('matrix-wandb-link');
+
+        // Restore selections from localStorage (or default to last 3 steps)
+        const savedSteps = localStorage.getItem('matrixSteps');
+        if (savedSteps) {
+            try {
+                const parsed = JSON.parse(savedSteps);
+                // Filter to only steps that actually exist in this run
+                const valid = parsed.filter(s => matrixState.steps.includes(s));
+                matrixState.selectedSteps = new Set(valid.length > 0 ? valid : matrixState.steps.slice(-3));
+            } catch { matrixState.selectedSteps = new Set(matrixState.steps.slice(-3)); }
+        } else {
+            matrixState.selectedSteps = new Set(matrixState.steps.slice(-3));
+        }
+
+        const savedCats = localStorage.getItem('matrixCats');
+        if (savedCats) {
+            try {
+                const parsed = JSON.parse(savedCats);
+                // Filter to only valid category names
+                const validCats = parsed.filter(c => MATRIX_CATEGORIES.some(mc => mc.name === c));
+                if (validCats.length > 0) matrixState.selectedCats = new Set(validCats);
+            } catch { /* keep default */ }
+        }
+
         renderMatrixFilters();
         renderMatrixGrid();
     } catch (err) {
@@ -1164,24 +1346,30 @@ function renderMatrixFilters() {
     }).join('');
 }
 
+function _saveMatrixSelections() {
+    localStorage.setItem('matrixSteps', JSON.stringify([...matrixState.selectedSteps]));
+    localStorage.setItem('matrixCats', JSON.stringify([...matrixState.selectedCats]));
+}
+
 function matrixTopK(k) {
     if (k === 0) {
         matrixState.selectedSteps = new Set(matrixState.steps);
     } else {
         matrixState.selectedSteps = new Set(matrixState.steps.slice(-k));
     }
+    _saveMatrixSelections();
     renderMatrixFilters();
     renderMatrixGrid();
 }
 
 function matrixToggleStep(step, e) {
     if (e && e.shiftKey) {
-        // Solo this step
         matrixState.selectedSteps = new Set([step]);
     } else {
         if (matrixState.selectedSteps.has(step)) matrixState.selectedSteps.delete(step);
         else matrixState.selectedSteps.add(step);
     }
+    _saveMatrixSelections();
     renderMatrixFilters();
     renderMatrixGrid();
 }
@@ -1190,6 +1378,7 @@ function matrixToggleCat(name, btn) {
     if (matrixState.selectedCats.has(name)) matrixState.selectedCats.delete(name);
     else matrixState.selectedCats.add(name);
     btn.classList.toggle('active');
+    _saveMatrixSelections();
     renderMatrixGrid();
 }
 
@@ -1253,24 +1442,115 @@ function renderMatrixGrid() {
 
     grid.innerHTML = html;
 
-    // Lazy-load videos and auto-play as they scroll into view
+    // Disconnect previous observer if any
+    if (matrixState._gridObserver) matrixState._gridObserver.disconnect();
+
+    // ── Fetch-based concurrency-limited video loader ──
+    // Uses fetch() instead of video.src to handle 202 (downloading) responses
+    const MAX_CONCURRENT = 3;
+    const loadQueue = [];
+    let activeLoads = 0;
+
+    function enqueueVideoLoad(cell, delay = 0) {
+        if (delay > 0) {
+            setTimeout(() => { loadQueue.push(cell); drainQueue(); }, delay * 1000);
+        } else {
+            loadQueue.push(cell);
+            drainQueue();
+        }
+    }
+
+    function drainQueue() {
+        while (activeLoads < MAX_CONCURRENT && loadQueue.length > 0) {
+            const cell = loadQueue.shift();
+            const video = cell.querySelector('video');
+            if (!video) continue;
+            // Skip if already loaded (has a blob: or http: src)
+            if (video.src && !video.src.startsWith('about:')) continue;
+
+            activeLoads++;
+            const url = video.dataset.proxy;
+
+            // Show spinner if not already showing
+            if (!cell.querySelector('.matrix-loading')) {
+                const spinner = document.createElement('div');
+                spinner.className = 'matrix-loading';
+                spinner.innerHTML = '⏳';
+                cell.appendChild(spinner);
+            }
+
+            fetch(url).then(resp => {
+                if (resp.status === 200) {
+                    // Video ready — create blob URL
+                    return resp.blob().then(blob => {
+                        const blobUrl = URL.createObjectURL(blob);
+                        video.src = blobUrl;
+                        video.preload = 'auto';
+                        video.addEventListener('loadeddata', () => {
+                            video.playbackRate = matrixState.speed;
+                            video.play().catch(() => {});
+                        }, { once: true });
+                        // Remove spinner
+                        const sp = cell.querySelector('.matrix-loading');
+                        if (sp) sp.remove();
+                        activeLoads--;
+                        drainQueue();
+                    });
+                } else if (resp.status === 202) {
+                    // Downloading — re-enqueue with delay
+                    return resp.json().then(data => {
+                        const sp = cell.querySelector('.matrix-loading');
+                        if (sp) sp.innerHTML = '⬇️';
+                        activeLoads--;
+                        enqueueVideoLoad(cell, data.retry_after || 3);
+                    });
+                } else if (resp.status === 404) {
+                    // Video doesn't exist
+                    video.style.display = 'none';
+                    const sp = cell.querySelector('.matrix-loading');
+                    if (sp) sp.remove();
+                    if (!cell.querySelector('.matrix-na-badge')) {
+                        const badge = document.createElement('div');
+                        badge.className = 'matrix-na-badge';
+                        badge.textContent = 'N/A';
+                        cell.appendChild(badge);
+                    }
+                    activeLoads--;
+                    drainQueue();
+                } else {
+                    throw new Error(`HTTP ${resp.status}`);
+                }
+            }).catch(() => {
+                // Network error — show N/A
+                video.style.display = 'none';
+                const sp = cell.querySelector('.matrix-loading');
+                if (sp) sp.remove();
+                if (!cell.querySelector('.matrix-na-badge')) {
+                    const badge = document.createElement('div');
+                    badge.className = 'matrix-na-badge';
+                    badge.textContent = 'N/A';
+                    cell.appendChild(badge);
+                }
+                activeLoads--;
+                drainQueue();
+            });
+        }
+    }
+
+    // Observer just enqueues cells visible in viewport
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(e => {
             if (e.isIntersecting) {
                 const video = e.target.querySelector('video');
-                if (video && !video.src) {
-                    video.src = video.dataset.proxy;
-                    video.preload = 'auto';
-                    video.addEventListener('loadeddata', () => {
-                        video.playbackRate = matrixState.speed;
-                        video.play().catch(() => { });
-                    }, { once: true });
+                if (video && (!video.src || video.src.startsWith('about:'))) {
+                    enqueueVideoLoad(e.target);
                 }
                 observer.unobserve(e.target);
             }
         });
     }, { rootMargin: '500px' });
 
+    matrixState._gridObserver = observer;
     grid.querySelectorAll('.matrix-video-cell').forEach(cell => observer.observe(cell));
 
     // Click-to-focus: clicking a cell sets keyboard focus to it
@@ -1294,6 +1574,13 @@ function matrixToggleSpeed() {
     matrixState.speed = matrixState.speed === 1 ? 2 : matrixState.speed === 2 ? 4 : matrixState.speed === 4 ? 0.5 : 1;
     document.querySelectorAll('#matrix-grid video').forEach(v => v.playbackRate = matrixState.speed);
     document.getElementById('matrix-speed-btn').textContent = `${matrixState.speed}× Speed`;
+}
+
+function refreshMatrix() {
+    matrixState.videoMetaCache = {};
+    if (matrixState._gridObserver) { matrixState._gridObserver.disconnect(); matrixState._gridObserver = null; }
+    loadMatrix();
+    toast('Matrix refreshed', 'info');
 }
 
 function _rowVideos(idx) { return document.querySelectorAll(`.matrix-row[data-row="${idx}"] video`); }
@@ -1668,12 +1955,14 @@ async function pollCacheStatus() {
     } catch { /* non-critical */ }
 }
 
-// Init
-document.addEventListener('DOMContentLoaded', () => {
+// Init — read hash on load for stable routing
+function initApp() {
     checkOnboarding();
-    loadDashboard();
-});
-if (document.readyState !== 'loading') {
-    checkOnboarding();
-    loadDashboard();
+    const hash = location.hash.replace(/^#\/?/, '') || 'dashboard';
+    const aliases = { 'video-matrix': 'matrix' };
+    const page = aliases[hash] || hash;
+    router.navigate(page);
 }
+
+document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState !== 'loading') initApp();

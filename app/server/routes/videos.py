@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.server.auth import get_db
@@ -101,6 +101,7 @@ def _make_client(db: Storage) -> WandBClient:
         entity=settings.get("wandb_entity", "kaiqin_kong_ucsd"),
         api_key=api_key,
         default_run_id=settings.get("default_run_id", "fif3z1z4"),
+        validation_key=settings.get("validation_key", "validation_videos_40_steps"),
     )
     return WandBClient(config)
 
@@ -209,6 +210,71 @@ async def list_runs(db: Storage = Depends(get_db)):
     ]
 
 
+class ProbeRequest(BaseModel):
+    run_id: str
+    entity: Optional[str] = None    # Override entity for this probe
+    project: Optional[str] = None   # Override project for this probe
+
+
+class ProbeResponse(BaseModel):
+    run_id: str
+    run_name: str
+    run_state: str
+    video_keys: list[str]
+    sample_filenames: list[str]
+    mp4_count: int
+    sample_captions: list[str]
+    caption_format: str
+    recommended_key: str
+    validation_steps: int
+    validation_num_samples: int
+    other_video_keys: list[str]
+
+
+@router.post("/runs/probe", response_model=ProbeResponse)
+async def probe_run(body: ProbeRequest, db: Storage = Depends(get_db)):
+    """Auto-detect video structure of a WandB run.
+
+    Inspects the run's files, history, and config to discover:
+    - Which history key contains validation videos
+    - What the MP4 filename pattern looks like
+    - What format the captions use
+    - Recommended validation_key for configuration
+    """
+    client = _make_client(db)
+
+    # Allow overriding entity/project for cross-project probing
+    if body.entity or body.project:
+        config = client.config
+        client = WandBClient(WandBConfig(
+            project=body.project or config.project,
+            entity=body.entity or config.entity,
+            api_key=config.api_key,
+            default_run_id=config.default_run_id,
+            validation_key=config.validation_key,
+        ))
+
+    try:
+        result = client.probe_run(body.run_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Probe failed: {exc}")
+
+    return ProbeResponse(
+        run_id=result.run_id,
+        run_name=result.run_name,
+        run_state=result.run_state,
+        video_keys=result.video_keys,
+        sample_filenames=result.sample_filenames,
+        mp4_count=result.mp4_count,
+        sample_captions=result.sample_captions,
+        caption_format=result.caption_format,
+        recommended_key=result.recommended_key,
+        validation_steps=result.validation_steps,
+        validation_num_samples=result.validation_num_samples,
+        other_video_keys=result.other_video_keys,
+    )
+
+
 @router.get("/checkpoints/{run_id}", response_model=list[CheckpointItem])
 async def list_checkpoints(run_id: str, db: Storage = Depends(get_db)):
     """List all checkpoints (steps with videos) for a run."""
@@ -272,10 +338,16 @@ async def proxy_video(
     request: Request = None,
     db: Storage = Depends(get_db),
 ):
-    """Download a single video from WandB (with local caching) and stream it."""
+    """Non-blocking video proxy with background downloading.
+
+    - Cached → serve file instantly (200)
+    - Download in-flight → return 202 JSON with retry_after
+    - Not started → kick off background download → return 202
+    """
+
     cached = _cache_path(run_id, step, index, request)
 
-    # Serve from cache if file exists and is non-empty
+    # ── Serve from cache if file exists and is non-empty ──
     if cached.exists() and cached.stat().st_size > 0:
         return FileResponse(
             path=str(cached),
@@ -283,33 +355,20 @@ async def proxy_video(
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
-    # If another thread is downloading this file, wait for it
+    # ── Download already in-flight? ──
     tmp = cached.with_suffix(".tmp")
     if tmp.exists():
-        for _ in range(60):  # wait up to 30s
-            time.sleep(0.5)
-            if cached.exists() and cached.stat().st_size > 0:
-                return FileResponse(
-                    path=str(cached),
-                    media_type="video/mp4",
-                    headers={"Cache-Control": "public, max-age=86400"},
-                )
-            if not tmp.exists():
-                break
-
-    # Check again after waiting
-    if cached.exists() and cached.stat().st_size > 0:
-        return FileResponse(
-            path=str(cached),
-            media_type="video/mp4",
-            headers={"Cache-Control": "public, max-age=86400"},
+        return JSONResponse(
+            status_code=202,
+            content={"status": "downloading", "retry_after": 2},
+            headers={"Retry-After": "2"},
         )
 
-    # Clean up any stale 0-byte files
+    # ── Clean up stale 0-byte files ──
     if cached.exists():
         cached.unlink()
 
-    # Get video metadata
+    # ── Start background download ──
     cache_key = f"{run_id}:{step}"
     videos = _get_cached_videos(cache_key)
     if videos is None:
@@ -325,18 +384,21 @@ async def proxy_video(
 
     video = videos[index]
 
-    # Download from WandB
-    logger.info("Downloading video %d from WandB: %s", index, video.wandb_path)
-    try:
-        _download_single_video(db, run_id, video, cached)
-    except Exception as exc:
-        logger.error("Failed to download video %d: %s", index, exc)
-        raise HTTPException(status_code=502, detail=f"Download failed: {exc}")
+    # Launch download in a background thread (non-blocking)
+    def _bg_download():
+        try:
+            _download_single_video(db, run_id, video, cached)
+            logger.info("Background download complete: %s step %d idx %d", run_id, step, index)
+        except Exception as exc:
+            logger.error("Background download failed: %s step %d idx %d: %s", run_id, step, index, exc)
 
-    return FileResponse(
-        path=str(cached),
-        media_type="video/mp4",
-        headers={"Cache-Control": "public, max-age=86400"},
+    thread = threading.Thread(target=_bg_download, daemon=True)
+    thread.start()
+
+    return JSONResponse(
+        status_code=202,
+        content={"status": "downloading", "retry_after": 3},
+        headers={"Retry-After": "3"},
     )
 
 

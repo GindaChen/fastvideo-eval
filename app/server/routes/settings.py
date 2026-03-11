@@ -28,6 +28,7 @@ class SettingsResponse(BaseModel):
     wandb_entity: str
     wandb_project: str
     default_run_id: str
+    validation_key: str
     auth_token_set: bool
 
 
@@ -36,6 +37,7 @@ class SettingsUpdate(BaseModel):
     wandb_entity: Optional[str] = None
     wandb_project: Optional[str] = None
     default_run_id: Optional[str] = None
+    validation_key: Optional[str] = None
     auth_token: Optional[str] = None
 
 
@@ -64,6 +66,7 @@ async def get_settings(db: Storage = Depends(get_db)):
         wandb_entity=settings.get("wandb_entity", ""),
         wandb_project=settings.get("wandb_project", ""),
         default_run_id=settings.get("default_run_id", ""),
+        validation_key=settings.get("validation_key", "validation_videos_40_steps"),
         auth_token_set=bool(settings.get("auth_token", "")),
     )
 
@@ -82,6 +85,8 @@ async def update_settings(
         db.set_setting("wandb_project", body.wandb_project)
     if body.default_run_id is not None:
         db.set_setting("default_run_id", body.default_run_id)
+    if body.validation_key is not None:
+        db.set_setting("validation_key", body.validation_key)
     if body.auth_token is not None:
         db.set_setting("auth_token", body.auth_token)
 

@@ -30,22 +30,22 @@
             <span class="sidebar-title">WanGame Eval</span>
         </div>
         <nav class="sidebar-nav">
-            <a href="#" data-page="dashboard" class="sidebar-link active">
+            <a href="#/dashboard" data-page="dashboard" class="sidebar-link active">
                 <span class="sl-icon">📊</span><span class="sl-label">Dashboard</span>
             </a>
-            <a href="#" data-page="evaluate" class="sidebar-link">
+            <a href="#/evaluate" data-page="evaluate" class="sidebar-link">
                 <span class="sl-icon">🎬</span><span class="sl-label">Evaluate</span>
             </a>
-            <a href="#" data-page="review" class="sidebar-link">
+            <a href="#/review" data-page="review" class="sidebar-link">
                 <span class="sl-icon">🔍</span><span class="sl-label">Review</span>
             </a>
-            <a href="#" data-page="matrix" class="sidebar-link">
+            <a href="#/matrix" data-page="matrix" class="sidebar-link">
                 <span class="sl-icon">🔲</span><span class="sl-label">Matrix</span>
             </a>
-            <a href="#" data-page="results" class="sidebar-link">
+            <a href="#/results" data-page="results" class="sidebar-link">
                 <span class="sl-icon">📈</span><span class="sl-label">Results</span>
             </a>
-            <a href="#" data-page="settings" class="sidebar-link">
+            <a href="#/settings" data-page="settings" class="sidebar-link">
                 <span class="sl-icon">⚙️</span><span class="sl-label">Settings</span>
             </a>
         </nav>
@@ -62,6 +62,9 @@
             <div class="page-header">
                 <h1>Dashboard</h1>
                 <p class="subtitle" id="dash-project-info">Loading...</p>
+                <a href="#" id="dash-wandb-link" class="wandb-link" target="_blank" rel="noopener" style="display:none">
+                    🔗 Open in WandB
+                </a>
             </div>
 
             <!-- Progress overview -->
@@ -121,6 +124,72 @@
                     </label>
                 </div>
                 <div id="import-status" class="subtitle" style="margin-top:8px"></div>
+            </div>
+
+            <!-- Settings (formerly separate page) -->
+            <div class="section-header" id="settings-section">
+                <h2>⚙️ Settings</h2>
+            </div>
+            <div class="settings-form">
+                <div class="form-section">
+                    <h3>WandB Connection</h3>
+                    <div class="form-group">
+                        <label for="setting-api-key">API Key</label>
+                        <div class="input-row">
+                            <input type="password" id="setting-api-key" placeholder="Enter WandB API key"
+                                class="form-input">
+                            <button class="btn btn-sm" onclick="toggleKeyVisibility()">👁</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-entity">Entity</label>
+                        <input type="text" id="setting-entity" class="form-input" placeholder="e.g. kaiqin_kong_ucsd">
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-project">Project</label>
+                        <input type="text" id="setting-project" class="form-input" placeholder="e.g. wangame_1.3b">
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-run-id">Default Run ID</label>
+                        <div class="input-row">
+                            <input type="text" id="setting-run-id" class="form-input" placeholder="e.g. fif3z1z4">
+                            <button class="btn btn-sm" onclick="probeRun()" id="btn-probe" title="Auto-detect video structure for this run">🔍 Auto-detect</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="setting-validation-key">Validation Key
+                            <span class="form-hint">(WandB history key for validation videos)</span>
+                        </label>
+                        <input type="text" id="setting-validation-key" class="form-input" placeholder="e.g. validation_videos_40_steps">
+                    </div>
+                    <!-- Probe results panel -->
+                    <div id="probe-results" class="probe-results hidden">
+                        <div class="probe-results-header">
+                            <strong>🔍 Detected Structure</strong>
+                            <button class="btn btn-sm" onclick="document.getElementById('probe-results').classList.add('hidden')">✕</button>
+                        </div>
+                        <div id="probe-results-body"></div>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+                        <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
+                    </div>
+                    <div id="settings-status" class="settings-status hidden"></div>
+                </div>
+
+                <div class="form-section">
+                    <h3>Evaluator</h3>
+                    <div class="form-group">
+                        <label for="setting-evaluator">Your Name</label>
+                        <input type="text" id="setting-evaluator" class="form-input" value="evaluator"
+                            placeholder="Your name for ratings">
+                    </div>
+                </div>
+
+                <div class="form-section muted">
+                    <h3>Server Info</h3>
+                    <div id="server-health" class="server-health">Checking...</div>
+                </div>
             </div>
         </section>
 
@@ -301,6 +370,9 @@
             <div class="page-header" style="padding:0 8px">
                 <h1>Video Matrix</h1>
                 <p class="subtitle" id="matrix-subtitle">Compare videos across steps and prompts</p>
+                <a href="#" id="matrix-wandb-link" class="wandb-link" target="_blank" rel="noopener" style="display:none">
+                    🔗 Open in WandB
+                </a>
             </div>
 
             <!-- Filters -->
@@ -322,6 +394,7 @@
                 <button class="btn btn-sm" onclick="matrixPauseAll()">⏸ Pause</button>
                 <button class="btn btn-sm" onclick="matrixReplayAll()">🔄 Replay</button>
                 <button class="btn btn-sm" id="matrix-speed-btn" onclick="matrixToggleSpeed()">1× Speed</button>
+                <button class="btn btn-sm" onclick="refreshMatrix()" title="Refresh matrix data and re-render grid">🔄 Refresh</button>
                 <button class="btn btn-sm" id="matrix-warm-btn" onclick="warmSelectedSteps()" title="Download all selected videos to server cache">🔥 Warm Cache</button>
                 <span class="cache-status-badge" id="cache-status-badge" style="display:none"></span>
                 <span style="flex:1"></span>
@@ -349,59 +422,15 @@
         </section>
 
         <!-- ============================================================= -->
-        <!-- SETTINGS PAGE                                                   -->
+        <!-- SETTINGS PAGE (redirects to dashboard)                          -->
         <!-- ============================================================= -->
         <section id="page-settings" class="page">
             <div class="page-header">
-                <span>
-                    <h1>Settings</h1>
-
-                </span>
+                <h1>Settings</h1>
+                <p class="subtitle">Settings have moved to the Dashboard.</p>
             </div>
-
-            <div class="settings-form">
-                <div class="form-section">
-                    <h3>WandB Connection</h3>
-                    <div class="form-group">
-                        <label for="setting-api-key">API Key</label>
-                        <div class="input-row">
-                            <input type="password" id="setting-api-key" placeholder="Enter WandB API key"
-                                class="form-input">
-                            <button class="btn btn-sm" onclick="toggleKeyVisibility()">👁</button>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="setting-entity">Entity</label>
-                        <input type="text" id="setting-entity" class="form-input" placeholder="e.g. kaiqin_kong_ucsd">
-                    </div>
-                    <div class="form-group">
-                        <label for="setting-project">Project</label>
-                        <input type="text" id="setting-project" class="form-input" placeholder="e.g. wangame_1.3b">
-                    </div>
-                    <div class="form-group">
-                        <label for="setting-run-id">Default Run ID</label>
-                        <input type="text" id="setting-run-id" class="form-input" placeholder="e.g. fif3z1z4">
-                    </div>
-                    <div class="form-actions">
-                        <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
-                        <button class="btn btn-secondary" onclick="testConnection()">Test Connection</button>
-                    </div>
-                    <div id="settings-status" class="settings-status hidden"></div>
-                </div>
-
-                <div class="form-section">
-                    <h3>Evaluator</h3>
-                    <div class="form-group">
-                        <label for="setting-evaluator">Your Name</label>
-                        <input type="text" id="setting-evaluator" class="form-input" value="evaluator"
-                            placeholder="Your name for ratings">
-                    </div>
-                </div>
-
-                <div class="form-section muted">
-                    <h3>Server Info</h3>
-                    <div id="server-health" class="server-health">Checking...</div>
-                </div>
+            <div class="action-row" style="margin-top:20px">
+                <button class="btn btn-primary" onclick="router.navigate('dashboard'); setTimeout(() => document.getElementById('settings-section')?.scrollIntoView({behavior:'smooth'}), 200)">Go to Dashboard → Settings</button>
             </div>
         </section>
 
