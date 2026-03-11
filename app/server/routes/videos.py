@@ -10,6 +10,7 @@ Endpoints:
 from __future__ import annotations
 
 import hashlib
+import os
 import logging
 import time
 from pathlib import Path
@@ -87,6 +88,9 @@ def _make_client(db: Storage) -> WandBClient:
             status_code=400,
             detail="No WandB API key configured. Go to Settings and enter your key first.",
         )
+    # wandb file.download() reads from env/netrc, NOT the per-instance api_key.
+    # Set the env var so ALL wandb operations use the stored key.
+    os.environ["WANDB_API_KEY"] = api_key
     logger.debug("WandB client: key=%s…%s", api_key[:4], api_key[-4:] if len(api_key) > 8 else "****")
     config = WandBConfig(
         project=settings.get("wandb_project", "wangame_1.3b"),
