@@ -855,7 +855,10 @@ function renderReviewGrid(ratings) {
 
     container.innerHTML = ratings.map((r, idx) => {
         const ckpt = r.checkpoint_id || '';
-        const step = ckpt.replace('step_', '') || '?';
+        const stepMatch = ckpt.match(/step(\d+)/);
+        const step = stepMatch ? stepMatch[1] : '0';
+        const idxMatch = (r.prompt_id || '').match(/(?:val|doom)_(\d+)/);
+        const vidIdx = idxMatch ? parseInt(idxMatch[1]) : 0;
         const issues = r.issues || [];
         const hasIssues = issues.length > 0;
         const promptLabel = r.prompt_id || r.video_id;
@@ -873,7 +876,7 @@ function renderReviewGrid(ratings) {
                 </div>
                 <div class="review-body">
                     <video class="review-video" playsinline muted loop preload="none"
-                           src="/api/video-proxy/${state.runId}/${step}/${r.prompt_id || 0}"
+                           src="/api/video-proxy/${state.runId}/${step}/${vidIdx}"
                            onclick="this.paused?this.play():this.pause()"></video>
                     <div class="review-tags-summary">${tagBadges || '<span class="text-muted">No reasons tagged</span>'}</div>
                 </div>
@@ -938,9 +941,12 @@ function renderTaggerCard() {
 
     // Video
     const ckpt = r.checkpoint_id || '';
-    const step = ckpt.replace('step_', '') || '0';
+    const stepMatch = ckpt.match(/step(\d+)/);
+    const step = stepMatch ? stepMatch[1] : '0';
+    const idxMatch = (r.prompt_id || '').match(/(?:val|doom)_(\d+)/);
+    const vidIdx = idxMatch ? parseInt(idxMatch[1]) : 0;
     const videoEl = document.getElementById('tagger-video');
-    videoEl.src = `/api/video-proxy/${state.runId}/${step}/${r.prompt_id || 0}`;
+    videoEl.src = `/api/video-proxy/${state.runId}/${step}/${vidIdx}`;
     videoEl.load();
     videoEl.oncanplay = () => { videoEl.playbackRate = state.playbackSpeed; };
     videoEl.play().catch(() => { });
