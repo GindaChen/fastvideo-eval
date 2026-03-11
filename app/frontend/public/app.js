@@ -1447,6 +1447,17 @@ async function matrixRateFocused(rating) {
         overlay.className = `matrix-rating-badge ${cls}`;
 
         toast(`Rated ${rating}`, 'success');
+
+        // Auto-advance to next cell after a brief flash
+        setTimeout(() => {
+            const allCells = Array.from(document.querySelectorAll('.matrix-video-cell'));
+            const curIdx = allCells.indexOf(cell);
+            if (curIdx >= 0 && curIdx < allCells.length - 1) {
+                matrixState.focusRow = parseInt(allCells[curIdx + 1].closest('.matrix-row')?.dataset.row || '0');
+                matrixState.focusCol = Array.from(allCells[curIdx + 1].closest('.matrix-row')?.querySelectorAll('.matrix-video-cell') || []).indexOf(allCells[curIdx + 1]);
+                updateCellFocus();
+            }
+        }, 200);
     } catch (err) {
         toast(`Rating error: ${err.message}`, 'error');
     }
