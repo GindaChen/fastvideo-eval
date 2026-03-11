@@ -680,8 +680,8 @@ document.addEventListener('keydown', e => {
         case 'l': case 'L': flashBtn('btn-good'); submitRating('good'); break;
         case 'j': case 'J': flashBtn('btn-bad'); submitRating('bad'); break;
         case 'k': case 'K': flashBtn('btn-skip'); submitRating('skip'); break;
-        case 'ArrowLeft': case 'a': case 'A': case 'q': case 'Q': goBack(); break;
-        case 'ArrowRight': case 'd': case 'D': case 'e': case 'E': goForward(); break;
+        case 'ArrowLeft': case 'a': case 'A': case 'q': case 'Q': case 'u': case 'U': goBack(); break;
+        case 'ArrowRight': case 'd': case 'D': case 'e': case 'E': case 'o': case 'O': goForward(); break;
         case 'Escape': restartEval(); break;
         case 'r': case 'R':
             document.getElementById('eval-video').currentTime = 0;
@@ -1407,6 +1407,28 @@ function handleMatrixKey(e) {
             }
             break;
         }
+        case 'u': case 'U': {
+            // Previous cell (left, wrapping to previous row)
+            e.preventDefault();
+            matrixState.focusCol--;
+            if (matrixState.focusCol < 0) {
+                matrixState.focusCol = dim.cols - 1;
+                matrixState.focusRow = Math.max(0, matrixState.focusRow - 1);
+            }
+            updateMatrixFocus();
+            break;
+        }
+        case 'o': case 'O': {
+            // Next cell (right, wrapping to next row)
+            e.preventDefault();
+            matrixState.focusCol++;
+            if (matrixState.focusCol >= dim.cols) {
+                matrixState.focusCol = 0;
+                matrixState.focusRow = Math.min(dim.rows - 1, matrixState.focusRow + 1);
+            }
+            updateMatrixFocus();
+            break;
+        }
     }
 }
 
@@ -1462,7 +1484,7 @@ async function matrixRateFocused(rating) {
             if (curIdx >= 0 && curIdx < allCells.length - 1) {
                 matrixState.focusRow = parseInt(allCells[curIdx + 1].closest('.matrix-row')?.dataset.row || '0');
                 matrixState.focusCol = Array.from(allCells[curIdx + 1].closest('.matrix-row')?.querySelectorAll('.matrix-video-cell') || []).indexOf(allCells[curIdx + 1]);
-                updateCellFocus();
+                updateMatrixFocus();
             }
         }, 200);
     } catch (err) {
