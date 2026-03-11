@@ -39,6 +39,9 @@
             <a href="#" data-page="review" class="sidebar-link">
                 <span class="sl-icon">🔍</span><span class="sl-label">Review</span>
             </a>
+            <a href="#" data-page="matrix" class="sidebar-link">
+                <span class="sl-icon">🔲</span><span class="sl-label">Matrix</span>
+            </a>
             <a href="#" data-page="results" class="sidebar-link">
                 <span class="sl-icon">📈</span><span class="sl-label">Results</span>
             </a>
@@ -219,6 +222,54 @@
                     </div>
                 </div>
             </div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- REVIEW PAGE                                                     -->
+        <!-- ============================================================= -->
+        <section id="page-review" class="page">
+            <div class="page-header">
+                <h1>Review Bad Videos</h1>
+                <p class="subtitle" id="review-subtitle">Loading...</p>
+            </div>
+            <div id="review-content"></div>
+        </section>
+
+        <!-- ============================================================= -->
+        <!-- MATRIX PAGE                                                     -->
+        <!-- ============================================================= -->
+        <section id="page-matrix" class="page" style="max-width:none;padding:0 8px">
+            <div class="page-header" style="padding:0 8px">
+                <h1>Video Matrix</h1>
+                <p class="subtitle" id="matrix-subtitle">Compare videos across steps and prompts</p>
+            </div>
+
+            <!-- Filters -->
+            <div id="matrix-filters" class="matrix-filters">
+                <div class="matrix-filter-group">
+                    <label>Steps</label>
+                    <div class="matrix-step-btns" id="matrix-step-btns"></div>
+                    <span class="matrix-filter-hint">Click to toggle • Shift-click to solo</span>
+                </div>
+                <div class="matrix-filter-group">
+                    <label>Categories</label>
+                    <div class="matrix-cat-btns" id="matrix-cat-btns"></div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="matrix-controls">
+                <button class="btn btn-sm" onclick="matrixPlayAll()">▶ Play All</button>
+                <button class="btn btn-sm" onclick="matrixPauseAll()">⏸ Pause</button>
+                <button class="btn btn-sm" onclick="matrixReplayAll()">🔄 Replay</button>
+                <button class="btn btn-sm" id="matrix-speed-btn" onclick="matrixToggleSpeed()">1× Speed</button>
+                <span style="flex:1"></span>
+                <span style="font-size:12px;color:var(--text-muted)">Click any video to play/pause · Rows = prompts,
+                    Cols = steps</span>
+            </div>
+
+            <!-- Grid -->
+            <div id="matrix-grid" class="matrix-grid"></div>
         </section>
 
         <!-- ============================================================= -->

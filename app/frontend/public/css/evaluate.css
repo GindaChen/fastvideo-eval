@@ -292,6 +292,24 @@
     min-width: 90px;
 }
 
+.btn-rate.bad {
+    border-color: var(--bad);
+    background: var(--bad-glow);
+    color: var(--bad);
+}
+
+.btn-rate.skip {
+    border-color: var(--warn);
+    background: rgba(245, 158, 11, 0.08);
+    color: var(--warn);
+}
+
+.btn-rate.good {
+    border-color: var(--good);
+    background: var(--good-glow);
+    color: var(--good);
+}
+
 .btn-rate-icon {
     font-size: 24px;
 }
@@ -305,20 +323,18 @@
 }
 
 .btn-rate.bad:hover {
-    border-color: var(--bad);
-    background: var(--bad-glow);
     box-shadow: 0 8px 24px var(--bad-glow);
+    transform: translateY(-3px);
 }
 
 .btn-rate.skip:hover {
-    border-color: var(--skip);
-    background: var(--skip-glow);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.15);
+    transform: translateY(-3px);
 }
 
 .btn-rate.good:hover {
-    border-color: var(--good);
-    background: var(--good-glow);
     box-shadow: 0 8px 24px var(--good-glow);
+    transform: translateY(-3px);
 }
 
 .key-hint {
@@ -718,4 +734,198 @@
         padding: 12px 20px;
         min-width: 75px;
     }
+}
+
+/* ====== Matrix Comparison Page ====== */
+.matrix-filters {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    margin-bottom: 12px;
+}
+
+.matrix-filter-group {
+    margin-bottom: 12px;
+}
+
+.matrix-filter-group:last-child {
+    margin-bottom: 0;
+}
+
+.matrix-filter-group>label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.matrix-filter-hint {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    display: block;
+}
+
+.matrix-step-chip {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace, monospace;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.matrix-step-chip:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.matrix-step-chip.active {
+    background: var(--accent-glow);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.matrix-cat-chip {
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: var(--transition);
+    margin-right: 4px;
+    margin-bottom: 4px;
+}
+
+.matrix-cat-chip:hover {
+    border-color: var(--cat-color);
+    color: var(--cat-color);
+}
+
+.matrix-cat-chip.active {
+    background: color-mix(in srgb, var(--cat-color) 15%, transparent);
+    border-color: var(--cat-color);
+    color: var(--cat-color);
+}
+
+.matrix-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 8px 0;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+}
+
+.matrix-grid {
+    padding-bottom: 40px;
+}
+
+.matrix-header-row,
+.matrix-row {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 6px;
+    align-items: start;
+}
+
+.matrix-header-row {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 5;
+    padding: 6px 0;
+}
+
+.matrix-corner {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 8px;
+}
+
+.matrix-col-header {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--accent);
+    padding: 8px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.matrix-cat-divider {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin: 16px 0 8px;
+    padding: 6px 0;
+    border-top: 1px solid var(--border);
+}
+
+.matrix-prompt-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    background: var(--bg-card);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    min-height: 40px;
+}
+
+.matrix-prompt-idx {
+    font-family: monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: rgba(88, 166, 255, 0.12);
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.matrix-video-cell {
+    position: relative;
+    background: var(--bg-card);
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.matrix-video-cell:hover {
+    border-color: var(--accent);
+}
+
+.matrix-video-cell video {
+    width: 100%;
+    display: block;
+}
+
+.matrix-size-tag {
+    position: absolute;
+    bottom: 3px;
+    right: 3px;
+    font-size: 9px;
+    font-family: monospace;
+    background: rgba(0, 0, 0, 0.75);
+    color: var(--text-muted);
+    padding: 1px 4px;
+    border-radius: 3px;
 }

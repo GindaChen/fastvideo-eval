@@ -19,7 +19,7 @@ const state = {
     // Chunk evaluation
     sequence: [],     // [{step, promptIdx}, ...] — the full ordered list
     chunkSize: parseInt(localStorage.getItem('chunkSize')) || 50,
-    prefetchCount: parseInt(localStorage.getItem('prefetchCount')) || 8,
+    prefetchCount: parseInt(localStorage.getItem('prefetchCount')) || 4,
     sortOrder: localStorage.getItem('sortOrder') || 'step_first', // or 'prompt_first'
     cursor: 0,        // position in sequence
     currentVideos: [], // loaded video metadata for current chunk
@@ -44,6 +44,7 @@ const router = {
             if (page === 'results') loadResults();
             if (page === 'evaluate') initEvaluate();
             if (page === 'review') loadReview();
+            if (page === 'matrix') loadMatrix();
         }
     }
 };
@@ -309,51 +310,65 @@ async function loadNextChunk() {
         return;
     }
 
-    // Group by step to batch-fetch metadata
+    // Group by step
     const stepGroups = {};
     for (const { step, promptIdx } of chunk) {
         if (!stepGroups[step]) stepGroups[step] = [];
         stepGroups[step].push(promptIdx);
     }
+    const stepKeys = Object.keys(stepGroups);
 
     showEvalSetup(`<div class="eval-empty-inner">
         <div class="eval-empty-msg">Loading chunk ${Math.floor(state.cursor / state.chunkSize) + 1}...</div>
         <div class="eval-spinner"></div>
     </div>`);
 
-    // Fetch metadata for each step in the chunk (in parallel)
-    const videoMap = {}; // `${step}:${idx}` → video data
+    // Fetch FIRST step's metadata immediately so we can show the first video fast
+    const videoMap = {};
     try {
-        const fetches = Object.keys(stepGroups).map(async step => {
-            const videos = await api(`/api/videos/${state.runId}/${step}`);
-            videos.forEach(v => { videoMap[`${step}:${v.index}`] = v; });
-        });
-        await Promise.all(fetches);
+        const firstStep = stepKeys[0];
+        const videos = await api(`/api/videos/${state.runId}/${firstStep}`);
+        videos.forEach(v => { videoMap[`${firstStep}:${v.index}`] = v; });
     } catch (err) {
         showEvalSetup(`<div class="eval-empty-msg">Failed to load: ${err.message}</div>`);
         return;
     }
 
-    // Build the chunk's video list in sequence order
+    // Build partial video list from first step, show immediately
     state.currentVideos = [];
     for (const { step, promptIdx } of chunk) {
         const v = videoMap[`${step}:${promptIdx}`];
         if (v) {
             state.currentVideos.push({ ...v, _step: step });
+        } else {
+            // Placeholder for videos whose metadata hasn't loaded yet
+            state.currentVideos.push({ _step: step, _promptIdx: promptIdx, _pending: true });
         }
     }
 
-    if (state.currentVideos.length === 0) {
-        // Skip to next chunk if nothing found
-        state.cursor += state.chunkSize;
-        loadNextChunk();
-        return;
-    }
-
     state.currentVideoIdx = 0;
-    toast(`Chunk loaded: ${state.currentVideos.length} videos`, 'success');
+    toast(`Chunk loaded: ${state.currentVideos.filter(v => !v._pending).length} ready, ${state.currentVideos.filter(v => v._pending).length} loading...`, 'success');
     showEvalUI();
     renderEvalCard();
+
+    // Fetch remaining steps' metadata in background (one at a time, not parallel)
+    for (let i = 1; i < stepKeys.length; i++) {
+        const step = stepKeys[i];
+        try {
+            const videos = await api(`/api/videos/${state.runId}/${step}`);
+            videos.forEach(v => { videoMap[`${step}:${v.index}`] = v; });
+            // Update placeholders in currentVideos
+            for (let j = 0; j < state.currentVideos.length; j++) {
+                const cv = state.currentVideos[j];
+                if (cv._pending) {
+                    const real = videoMap[`${cv._step}:${cv._promptIdx}`];
+                    if (real) {
+                        state.currentVideos[j] = { ...real, _step: cv._step };
+                    }
+                }
+            }
+        } catch { /* non-critical */ }
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -374,6 +389,16 @@ function renderEvalCard() {
     const video = state.currentVideos[state.currentVideoIdx];
     if (!video) {
         showChunkSummary();
+        return;
+    }
+
+    // If this video's metadata hasn't loaded yet, skip to next available
+    if (video._pending) {
+        toast('Video still loading, skipping...', 'info');
+        if (state.currentVideoIdx < state.currentVideos.length - 1) {
+            state.currentVideoIdx++;
+            renderEvalCard();
+        }
         return;
     }
 
@@ -411,16 +436,27 @@ function renderEvalCard() {
     // Video URL — via proxy
     const videoEl = document.getElementById('eval-video');
     const overlay = document.getElementById('eval-overlay');
-    // Show loading state
+    // Show loading state initially
     overlay.classList.add('show');
     overlay.querySelector('.eval-overlay-icon').textContent = '⏳';
     videoEl.src = video.proxy_url || `/api/video-proxy/${state.runId}/${step}/${video.index}`;
-    videoEl.playbackRate = state.playbackSpeed;
     videoEl.load();
+
+    // If video is already cached, it'll be ready almost instantly
+    const checkReady = () => {
+        if (videoEl.readyState >= 3) {
+            overlay.classList.remove('show');
+            overlay.querySelector('.eval-overlay-icon').textContent = '▶';
+        }
+    };
     videoEl.oncanplay = () => {
         overlay.classList.remove('show');
         overlay.querySelector('.eval-overlay-icon').textContent = '▶';
+        // Set speed AFTER load — browser resets playbackRate on load()
+        videoEl.playbackRate = state.playbackSpeed;
     };
+    // Check immediately in case already cached
+    setTimeout(() => { checkReady(); videoEl.playbackRate = state.playbackSpeed; }, 50);
     videoEl.play().catch(() => { });
 
     // Time/frame badge
@@ -432,25 +468,36 @@ function renderEvalCard() {
         badge.textContent = `${fmt(t)} / ${fmt(d)} • F${Math.floor(t * fps)}/${Math.floor(d * fps)}`;
     };
 
-    // Prefetch next 3
-    prefetchAhead(state.currentVideoIdx + 1, state.prefetchCount);
+    // Sequential prefetch — limited window
+    prefetchSequential(state.currentVideoIdx + 1);
 
     // Meta
     document.getElementById('eval-caption').textContent = video.caption || video.prompt_id;
     document.getElementById('eval-category').textContent = video.action_label || video.category || '';
     document.getElementById('eval-step').textContent = `Step ${step}`;
     document.getElementById('speed-badge').textContent = `${state.playbackSpeed}×`;
+    // Sync speed slider
+    const sSlider = document.getElementById('speed-slider');
+    if (sSlider) sSlider.value = state.playbackSpeed;
 }
 
-function prefetchAhead(startIdx, count) {
-    for (let i = startIdx; i < Math.min(startIdx + count, state.currentVideos.length); i++) {
+// Sequential prefetch: fetch one video at a time, limited to prefetchCount
+let _prefetchRunning = false;
+async function prefetchSequential(startIdx) {
+    if (_prefetchRunning) return; // already prefetching
+    _prefetchRunning = true;
+    const limit = startIdx + state.prefetchCount;
+    for (let i = startIdx; i < Math.min(limit, state.currentVideos.length); i++) {
         const v = state.currentVideos[i];
-        if (v && !v._prefetched) {
+        if (v && !v._prefetched && !v._pending) {
             v._prefetched = true;
             const step = v._step || 0;
-            fetch(v.proxy_url || `/api/video-proxy/${state.runId}/${step}/${v.index}`).catch(() => { });
+            try {
+                await fetch(v.proxy_url || `/api/video-proxy/${state.runId}/${step}/${v.index}`);
+            } catch { }
         }
     }
+    _prefetchRunning = false;
 }
 
 function showChunkSummary() {
@@ -866,6 +913,189 @@ async function loadSkippedQueue() {
     } catch (err) { toast(`Error: ${err.message}`, 'error'); }
 }
 
+// --------------------------------------------------------------------------
+// Matrix — video comparison grid
+// --------------------------------------------------------------------------
+const MATRIX_CATEGORIES = [
+    { name: 'Single Key', color: '#3fb950', indices: [0, 1, 2, 3] },
+    { name: 'Camera', color: '#d29922', indices: [4, 5, 6, 7] },
+    { name: 'Random', color: '#58a6ff', indices: [8, 9, 10, 11] },
+    { name: 'Combined', color: '#bc8cff', indices: [12, 13, 14, 15] },
+    { name: 'Simultaneous', color: '#bc8cff', indices: [16, 17, 18, 19] },
+    { name: 'Multi-key', color: '#bc8cff', indices: [20, 21] },
+    { name: 'Still', color: '#8b949e', indices: [22, 23] },
+    { name: 'Alt Frame', color: '#bc8cff', indices: [24, 25] },
+    { name: 'Training', color: '#f0883e', indices: [26, 27] },
+    { name: 'Doom', color: '#f85149', indices: [28, 29, 30, 31] },
+];
+
+const matrixState = {
+    steps: [],
+    selectedSteps: new Set(),
+    selectedCats: new Set(MATRIX_CATEGORIES.map(c => c.name)),
+    numPrompts: 32,
+    speed: 1,
+    videoMetaCache: {}, // step → videoList
+};
+
+async function loadMatrix() {
+    if (!state.runId) {
+        const local = getLocalSettings();
+        state.runId = local.default_run_id;
+    }
+    if (!state.runId) {
+        document.getElementById('matrix-grid').innerHTML = '<div class="empty-state">No run configured. Go to Settings first.</div>';
+        return;
+    }
+
+    // Fetch matrix dimensions
+    try {
+        const m = await api(`/api/matrix/${state.runId}`);
+        matrixState.steps = m.steps;
+        matrixState.numPrompts = m.num_prompts;
+        document.getElementById('matrix-subtitle').textContent = `${m.run_name} • ${m.steps.length} steps × ${m.num_prompts} prompts = ${m.total_videos.toLocaleString()} videos`;
+
+        // Default: pick last 5 steps
+        matrixState.selectedSteps = new Set(m.steps.slice(-5));
+        renderMatrixFilters();
+        renderMatrixGrid();
+    } catch (err) {
+        document.getElementById('matrix-grid').innerHTML = `<div class="empty-state">Error: ${err.message}</div>`;
+    }
+}
+
+function renderMatrixFilters() {
+    const stepCont = document.getElementById('matrix-step-btns');
+    // Top-K shortcuts
+    let html = `<div style="display:flex;gap:4px;margin-bottom:6px">`;
+    for (const k of [3, 5, 10, 20, 'All']) {
+        html += `<button class="btn btn-sm" onclick="matrixTopK(${k === 'All' ? 0 : k})">${k === 'All' ? 'All' : `Last ${k}`}</button>`;
+    }
+    html += `</div><div style="display:flex;gap:3px;flex-wrap:wrap">`;
+    for (const step of matrixState.steps) {
+        const active = matrixState.selectedSteps.has(step) ? 'active' : '';
+        html += `<button class="matrix-step-chip ${active}" data-step="${step}" onclick="matrixToggleStep(${step}, event)">${step}</button>`;
+    }
+    html += `</div>`;
+    stepCont.innerHTML = html;
+
+    // Category filters
+    const catCont = document.getElementById('matrix-cat-btns');
+    catCont.innerHTML = MATRIX_CATEGORIES.map(c => {
+        const active = matrixState.selectedCats.has(c.name) ? 'active' : '';
+        return `<button class="matrix-cat-chip ${active}" style="--cat-color:${c.color}" onclick="matrixToggleCat('${c.name}', this)">${c.name}</button>`;
+    }).join('');
+}
+
+function matrixTopK(k) {
+    if (k === 0) {
+        matrixState.selectedSteps = new Set(matrixState.steps);
+    } else {
+        matrixState.selectedSteps = new Set(matrixState.steps.slice(-k));
+    }
+    renderMatrixFilters();
+    renderMatrixGrid();
+}
+
+function matrixToggleStep(step, e) {
+    if (e && e.shiftKey) {
+        // Solo this step
+        matrixState.selectedSteps = new Set([step]);
+    } else {
+        if (matrixState.selectedSteps.has(step)) matrixState.selectedSteps.delete(step);
+        else matrixState.selectedSteps.add(step);
+    }
+    renderMatrixFilters();
+    renderMatrixGrid();
+}
+
+function matrixToggleCat(name, btn) {
+    if (matrixState.selectedCats.has(name)) matrixState.selectedCats.delete(name);
+    else matrixState.selectedCats.add(name);
+    btn.classList.toggle('active');
+    renderMatrixGrid();
+}
+
+function renderMatrixGrid() {
+    const grid = document.getElementById('matrix-grid');
+    const steps = matrixState.steps.filter(s => matrixState.selectedSteps.has(s)).sort((a, b) => a - b);
+    if (steps.length === 0) {
+        grid.innerHTML = '<div class="empty-state">Select at least one step above.</div>';
+        return;
+    }
+
+    // Determine which prompt indices to show
+    let visibleIndices = [];
+    for (const cat of MATRIX_CATEGORIES) {
+        if (matrixState.selectedCats.has(cat.name)) {
+            visibleIndices.push(...cat.indices);
+        }
+    }
+    visibleIndices = visibleIndices.filter(i => i < matrixState.numPrompts).sort((a, b) => a - b);
+
+    const cols = steps.length;
+    const colTemplate = `200px repeat(${cols}, 1fr)`;
+
+    // Header row
+    let html = `<div class="matrix-header-row" style="grid-template-columns:${colTemplate}">`;
+    html += `<div class="matrix-corner">Prompt</div>`;
+    for (const step of steps) {
+        html += `<div class="matrix-col-header">Step ${step}</div>`;
+    }
+    html += `</div>`;
+
+    // Group by category
+    let currentCat = null;
+    for (const idx of visibleIndices) {
+        const cat = MATRIX_CATEGORIES.find(c => c.indices.includes(idx));
+        if (cat && cat.name !== currentCat) {
+            currentCat = cat.name;
+            html += `<div class="matrix-cat-divider" style="color:${cat.color}">${cat.name}</div>`;
+        }
+
+        html += `<div class="matrix-row" style="grid-template-columns:${colTemplate}">`;
+        html += `<div class="matrix-prompt-label"><span class="matrix-prompt-idx">${String(idx).padStart(2, '0')}</span></div>`;
+
+        for (const step of steps) {
+            const proxyUrl = `/api/video-proxy/${state.runId}/${step}/${idx}`;
+            html += `<div class="matrix-video-cell" data-url="${proxyUrl}">
+                <video preload="none" muted loop playsinline data-proxy="${proxyUrl}"
+                       onclick="this.paused?this.play():this.pause()"></video>
+                <span class="matrix-size-tag">S${step}</span>
+            </div>`;
+        }
+        html += `</div>`;
+    }
+
+    grid.innerHTML = html;
+
+    // Lazy-load videos as they scroll into view
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(e => {
+            if (e.isIntersecting) {
+                const video = e.target.querySelector('video');
+                if (video && !video.src) {
+                    video.src = video.dataset.proxy;
+                    video.preload = 'auto';
+                }
+                observer.unobserve(e.target);
+            }
+        });
+    }, { rootMargin: '500px' });
+
+    grid.querySelectorAll('.matrix-video-cell').forEach(cell => observer.observe(cell));
+}
+
+function matrixPlayAll() { document.querySelectorAll('#matrix-grid video').forEach(v => { if (v.src) v.play(); }); }
+function matrixPauseAll() { document.querySelectorAll('#matrix-grid video').forEach(v => v.pause()); }
+function matrixReplayAll() { document.querySelectorAll('#matrix-grid video').forEach(v => { if (v.src) { v.currentTime = 0; v.play(); } }); }
+function matrixToggleSpeed() {
+    matrixState.speed = matrixState.speed === 1 ? 2 : matrixState.speed === 2 ? 4 : matrixState.speed === 4 ? 0.5 : 1;
+    document.querySelectorAll('#matrix-grid video').forEach(v => v.playbackRate = matrixState.speed);
+    document.getElementById('matrix-speed-btn').textContent = `${matrixState.speed}× Speed`;
+}
+
 // Init
 document.addEventListener('DOMContentLoaded', loadDashboard);
 if (document.readyState !== 'loading') loadDashboard();
+
