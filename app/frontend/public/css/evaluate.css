@@ -899,6 +899,32 @@
     border-radius: 4px;
 }
 
+.matrix-row-controls {
+    margin-left: auto;
+    display: flex;
+    gap: 2px;
+}
+
+.matrix-row-controls button {
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+}
+
+.matrix-row-controls button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+}
+
 .matrix-video-cell {
     position: relative;
     background: var(--bg-card);

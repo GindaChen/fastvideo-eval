@@ -932,7 +932,7 @@ const MATRIX_CATEGORIES = [
 const matrixState = {
     steps: [],
     selectedSteps: new Set(),
-    selectedCats: new Set(MATRIX_CATEGORIES.map(c => c.name)),
+    selectedCats: new Set(['Single Key']),
     numPrompts: 32,
     speed: 1,
     videoMetaCache: {}, // step → videoList
@@ -955,8 +955,8 @@ async function loadMatrix() {
         matrixState.numPrompts = m.num_prompts;
         document.getElementById('matrix-subtitle').textContent = `${m.run_name} • ${m.steps.length} steps × ${m.num_prompts} prompts = ${m.total_videos.toLocaleString()} videos`;
 
-        // Default: pick last 5 steps
-        matrixState.selectedSteps = new Set(m.steps.slice(-5));
+        // Default: pick last 3 steps, Single Key category
+        matrixState.selectedSteps = new Set(m.steps.slice(-3));
         renderMatrixFilters();
         renderMatrixGrid();
     } catch (err) {
@@ -1053,8 +1053,15 @@ function renderMatrixGrid() {
             html += `<div class="matrix-cat-divider" style="color:${cat.color}">${cat.name}</div>`;
         }
 
-        html += `<div class="matrix-row" style="grid-template-columns:${colTemplate}">`;
-        html += `<div class="matrix-prompt-label"><span class="matrix-prompt-idx">${String(idx).padStart(2, '0')}</span></div>`;
+        html += `<div class="matrix-row" data-row="${idx}" style="grid-template-columns:${colTemplate}">`;
+        html += `<div class="matrix-prompt-label">
+            <span class="matrix-prompt-idx">${String(idx).padStart(2, '0')}</span>
+            <span class="matrix-row-controls">
+                <button onclick="matrixRowPlay(${idx})" title="Play row">▶</button>
+                <button onclick="matrixRowPause(${idx})" title="Pause row">⏸</button>
+                <button onclick="matrixRowReplay(${idx})" title="Replay row">🔄</button>
+            </span>
+        </div>`;
 
         for (const step of steps) {
             const proxyUrl = `/api/video-proxy/${state.runId}/${step}/${idx}`;
@@ -1094,6 +1101,11 @@ function matrixToggleSpeed() {
     document.querySelectorAll('#matrix-grid video').forEach(v => v.playbackRate = matrixState.speed);
     document.getElementById('matrix-speed-btn').textContent = `${matrixState.speed}× Speed`;
 }
+
+function _rowVideos(idx) { return document.querySelectorAll(`.matrix-row[data-row="${idx}"] video`); }
+function matrixRowPlay(idx) { _rowVideos(idx).forEach(v => { if (v.src) { v.playbackRate = matrixState.speed; v.play(); } }); }
+function matrixRowPause(idx) { _rowVideos(idx).forEach(v => v.pause()); }
+function matrixRowReplay(idx) { _rowVideos(idx).forEach(v => { if (v.src) { v.currentTime = 0; v.playbackRate = matrixState.speed; v.play(); } }); }
 
 // Init
 document.addEventListener('DOMContentLoaded', loadDashboard);
