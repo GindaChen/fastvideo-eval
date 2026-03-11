@@ -984,3 +984,95 @@
 .matrix-rating-badge.skip {
     background: rgba(210, 153, 34, 0.3);
 }
+
+/* ====== Review Overview ====== */
+.review-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.review-filter-tabs {
+    display: flex;
+    gap: 6px;
+}
+
+.review-filter-tabs .btn.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+.issue-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(248, 81, 73, 0.15);
+    color: #f85149;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    margin: 2px;
+}
+
+.review-tags-summary {
+    margin-top: 8px;
+}
+
+/* ====== Reason Tagger ====== */
+.tagger-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.tagger-reason-btn {
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    border: 2px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: var(--transition);
+    user-select: none;
+}
+
+.tagger-reason-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.tagger-reason-btn.active {
+    background: rgba(248, 81, 73, 0.15);
+    border-color: #f85149;
+    color: #f85149;
+}
+
+.tagger-other-row {
+    max-width: 500px;
+    margin: 8px auto;
+    padding: 0 16px;
+}
+
+.tagger-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+}
+
+.key-hint {
+    font-size: 10px;
+    font-weight: 700;
+    opacity: 0.5;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    padding: 1px 4px;
+    margin-left: 4px;
+}

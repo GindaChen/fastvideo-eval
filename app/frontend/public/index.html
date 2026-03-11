@@ -228,11 +228,58 @@
         <!-- REVIEW PAGE                                                     -->
         <!-- ============================================================= -->
         <section id="page-review" class="page">
-            <div class="page-header">
-                <h1>Review Bad Videos</h1>
-                <p class="subtitle" id="review-subtitle">Loading...</p>
+            <!-- Overview mode -->
+            <div id="review-overview">
+                <div class="page-header">
+                    <h1>Review</h1>
+                    <p class="subtitle" id="review-subtitle">Loading...</p>
+                </div>
+                <div class="review-toolbar">
+                    <div class="review-filter-tabs" id="review-filter-tabs"></div>
+                    <button class="btn btn-primary btn-sm" id="btn-start-tagging" onclick="startReasonTagger()">🏷️ Tag
+                        Bad Videos</button>
+                </div>
+                <div id="review-content"></div>
             </div>
-            <div id="review-content"></div>
+
+            <!-- Card-based reason tagger (like Evaluate) -->
+            <div id="review-tagger" class="hidden">
+                <div class="eval-toolbar">
+                    <button class="toolbar-btn" onclick="exitReasonTagger()" title="Back to overview">✕</button>
+                    <div class="eval-chunk-label" id="tagger-label">Video 0 of 0</div>
+                    <div class="toolbar-controls">
+                        <button class="toolbar-btn" onclick="taggerPrev()" title="Previous">◀</button>
+                        <button class="toolbar-btn" onclick="taggerNext()" title="Next">▶</button>
+                    </div>
+                </div>
+                <div class="eval-dots" id="tagger-dots"></div>
+
+                <div class="eval-card-container" style="max-width:70vw">
+                    <div class="eval-card" id="tagger-card">
+                        <div class="eval-video-wrap">
+                            <video id="tagger-video" playsinline muted loop preload="auto"></video>
+                            <div class="eval-time-badge" id="tagger-time-badge">0:00</div>
+                        </div>
+                        <div class="eval-meta">
+                            <span class="eval-caption" id="tagger-caption">–</span>
+                            <span class="eval-tag" id="tagger-step">–</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reason buttons (numbered) -->
+                <div class="tagger-reasons" id="tagger-reasons"></div>
+                <div class="tagger-other-row">
+                    <input type="text" class="form-input" id="tagger-freetext"
+                        placeholder="Other reason (type and press Enter)...">
+                </div>
+                <div class="tagger-actions">
+                    <button class="btn btn-secondary" onclick="taggerSkip()">Skip ⏭ <span
+                            class="key-hint">K</span></button>
+                    <button class="btn btn-primary" onclick="taggerSave()">Save & Next ↵ <span
+                            class="key-hint">Enter</span></button>
+                </div>
+            </div>
         </section>
 
         <!-- ============================================================= -->
