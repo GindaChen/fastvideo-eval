@@ -56,7 +56,7 @@ class ClaimRequest(BaseModel):
 
 class RatingRequest(BaseModel):
     video_id: str
-    chunk_id: str
+    chunk_id: str = ""
     checkpoint_id: str
     prompt_id: str
     rating: str  # good | bad | skip
