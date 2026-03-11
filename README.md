@@ -84,45 +84,10 @@ wangame-eval/
 └── docs/                     # GitHub Pages site
 ```
 
-## Pipeline Overview
-
-```mermaid
-graph LR
-    A[Training on M2] -->|every 500 steps| B[Videos uploaded to WandB]
-    B --> C[Eval App streams videos]
-    C --> D[Evaluators rate with J/K/L]
-    D --> E[Scores computed per checkpoint]
-    E --> F[Checkpoint decision < 20 min]
-```
-
-**Data flow:** Training generates validation videos every 500 steps → uploaded to WandB (source of truth) → Eval App streams via proxy with local caching → ratings saved to JSONL.
-
-## Subprojects
-
-### SP1: Evaluation App ✅
-
-Functional web app with card-style eval, matrix comparison, review workflow, keyboard-first rating, JSONL storage, and video proxy with caching.
-
-### SP2: Scoring & Analysis 🔲
-
-Per-task scoring rubrics, difficulty-adjusted tolerance, trend tracking across runs. Currently: per-checkpoint aggregate scores from ratings.
-
-### SP3: Prompt Design 🔲
-
-Expand from 32 → ~120 prompts with balanced task × scene difficulty coverage. Categorize 23 actions into evaluatable task groups.
-
-## Documents
-
-| Document | Description |
-|---|---|
-| [Executive Brief](docs/eval_pipeline_exec_brief.md) | One-page problem + proposal |
-| [Summary Report](docs/eval_pipeline_summary.md) | Problem, solution, action items |
-| [Full Meeting Notes](docs/eval_pipeline_full.md) | All technical details |
-| [UI Design Spec](docs/ui_design_spec.md) | Frontend design specification |
-
 ## References
 
 - **WandB Project:** [wangame_1.3b](https://wandb.ai/kaiqin_kong_ucsd/wangame_1.3b)
 - **Model:** 1.3B parameter Minecraft world model
 - **Validation:** 32 prompts, 77 frames each, every 500 training steps
 - **Target:** ~120 prompts, evaluated by 5 people in < 20 min
+
