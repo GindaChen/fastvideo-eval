@@ -322,6 +322,8 @@
                 <button class="btn btn-sm" onclick="matrixPauseAll()">⏸ Pause</button>
                 <button class="btn btn-sm" onclick="matrixReplayAll()">🔄 Replay</button>
                 <button class="btn btn-sm" id="matrix-speed-btn" onclick="matrixToggleSpeed()">1× Speed</button>
+                <button class="btn btn-sm" id="matrix-warm-btn" onclick="warmSelectedSteps()" title="Download all selected videos to server cache">🔥 Warm Cache</button>
+                <span class="cache-status-badge" id="cache-status-badge" style="display:none"></span>
                 <span style="flex:1"></span>
                 <span class="matrix-key-hints">
                     <kbd>J</kbd> Bad &nbsp; <kbd>K</kbd> Skip &nbsp; <kbd>L</kbd> Good &nbsp;│&nbsp;

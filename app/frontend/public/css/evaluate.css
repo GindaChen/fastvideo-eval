@@ -1118,3 +1118,15 @@ kbd {
     color: var(--text-muted);
     line-height: 1.8;
 }
+
+/* Cache warm status badge */
+.cache-status-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+}

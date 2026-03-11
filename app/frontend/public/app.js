@@ -1597,6 +1597,77 @@ function submitOnboarding() {
     toast(`Welcome, ${name}!`, 'success');
 }
 
+// --------------------------------------------------------------------------
+// Cache warming
+// --------------------------------------------------------------------------
+let _cacheStatusInterval = null;
+
+async function warmSelectedSteps() {
+    if (!state.runId) { toast('No run configured', 'error'); return; }
+    const steps = [...matrixState.selectedSteps];
+    if (steps.length === 0) { toast('Select steps first', 'error'); return; }
+
+    const btn = document.getElementById('matrix-warm-btn');
+    btn.textContent = '⏳ Starting...';
+    btn.disabled = true;
+
+    try {
+        const r = await api('/api/cache/warm', {
+            method: 'POST',
+            body: JSON.stringify({ run_id: state.runId, steps }),
+        });
+        toast(r.message, r.status === 'already_running' ? 'info' : 'success');
+        btn.textContent = '🔥 Warming...';
+        startCacheStatusPolling();
+    } catch (err) {
+        toast(`Warm failed: ${err.message}`, 'error');
+        btn.textContent = '🔥 Warm Cache';
+        btn.disabled = false;
+    }
+}
+
+function startCacheStatusPolling() {
+    if (_cacheStatusInterval) return;
+    _cacheStatusInterval = setInterval(pollCacheStatus, 3000);
+    pollCacheStatus(); // immediate first poll
+}
+
+function stopCacheStatusPolling() {
+    if (_cacheStatusInterval) {
+        clearInterval(_cacheStatusInterval);
+        _cacheStatusInterval = null;
+    }
+}
+
+async function pollCacheStatus() {
+    if (!state.runId) return;
+    try {
+        const s = await api(`/api/cache/status/${state.runId}`);
+        const badge = document.getElementById('cache-status-badge');
+        const btn = document.getElementById('matrix-warm-btn');
+
+        if (s.warming && s.warm_progress) {
+            const p = s.warm_progress;
+            const done = p.videos_downloaded + p.videos_cached;
+            const total = p.videos_total || '?';
+            badge.textContent = `⏳ ${done}/${total} cached (step ${p.current_step}, ${p.steps_done}/${p.steps_total} steps)`;
+            badge.style.display = 'inline';
+            btn.textContent = '🔥 Warming...';
+            btn.disabled = true;
+        } else {
+            if (s.cached_videos > 0) {
+                badge.textContent = `✅ ${s.cached_videos} cached`;
+                badge.style.display = 'inline';
+            } else {
+                badge.style.display = 'none';
+            }
+            btn.textContent = '🔥 Warm Cache';
+            btn.disabled = false;
+            stopCacheStatusPolling();
+        }
+    } catch { /* non-critical */ }
+}
+
 // Init
 document.addEventListener('DOMContentLoaded', () => {
     checkOnboarding();
