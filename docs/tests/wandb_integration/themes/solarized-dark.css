@@ -1,0 +1,92 @@
+/* Theme: Solarized Dark */
+body {
+  background: #002b36;
+  color: #93a1a1;
+}
+
+/* ── Slide ── */
+.slide-label { color: #268bd2; }
+.slide h1 {
+  background: linear-gradient(135deg, #268bd2, #2aa198);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.slide h2 { color: #93a1a1; }
+.slide h3 { color: #2aa198; }
+.slide p, .slide li { color: #657b83; }
+.slide strong { color: #93a1a1; }
+.slide em { color: #859900; font-style: normal; }
+.slide a { color: #268bd2; border-bottom-color: #268bd2; }
+.slide a:hover { color: #2aa198; }
+.slide hr { background: #1a5060; }
+
+/* ── Code ── */
+.slide code {
+  background: rgba(38,139,210,.08);
+  border: 1px solid #1a5060;
+  color: #268bd2;
+}
+.slide pre {
+  background: #001e27;
+  border: 1px solid #1a5060;
+  color: #657b83;
+}
+
+/* ── Blockquote ── */
+.slide blockquote {
+  border-left-color: #268bd2;
+  background: rgba(38,139,210,.08);
+}
+.slide blockquote p { color: #93a1a1; }
+
+/* ── Table ── */
+.slide th { color: #93a1a1; background: #073642; }
+.slide td { color: #657b83; border-bottom-color: #1a5060; }
+.slide th { border-bottom: 1px solid #1a5060; }
+.slide tr:hover td { background: #0a3f4c; }
+
+/* ── Images ── */
+.slide img { border: 1px solid #1a5060; }
+
+/* ── Nav bar ── */
+.nav-bar {
+  background: #073642;
+  border: 1px solid #1a5060;
+}
+.nav-bar button { color: #657b83; }
+.nav-bar button:hover { color: #93a1a1; background: #0a3f4c; }
+.counter { color: #657b83; }
+
+/* ── Dots ── */
+.dot { background: #1a5060; }
+.dot.active { background: #268bd2; box-shadow: 0 0 8px #268bd2; }
+.dot:hover { background: #657b83; }
+
+/* ── Progress ── */
+.progress {
+  background: linear-gradient(90deg, #268bd2, #2aa198);
+}
+
+/* ── Settings ── */
+.settings-btn {
+  color: #657b83;
+  border-color: #1a5060;
+  background: #073642;
+}
+.settings-btn:hover { color: #93a1a1; border-color: #268bd2; }
+.settings-panel {
+  background: #073642;
+  border-color: #1a5060;
+}
+.settings-panel h3 { color: #657b83; }
+.theme-option {
+  color: #657b83;
+}
+.theme-option:hover {
+  background: #0a3f4c;
+  color: #93a1a1;
+}
+.theme-option.active {
+  background: rgba(38,139,210,.08);
+  color: #268bd2;
+  border-color: #268bd2;
+}

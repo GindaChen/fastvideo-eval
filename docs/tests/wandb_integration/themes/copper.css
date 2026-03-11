@@ -1,0 +1,92 @@
+/* Theme: Copper */
+body {
+  background: #1a1008;
+  color: #f0e0cc;
+}
+
+/* ── Slide ── */
+.slide-label { color: #c2884a; }
+.slide h1 {
+  background: linear-gradient(135deg, #c2884a, #d4995a);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.slide h2 { color: #f0e0cc; }
+.slide h3 { color: #d4995a; }
+.slide p, .slide li { color: #b09878; }
+.slide strong { color: #f0e0cc; }
+.slide em { color: #e8a86a; font-style: normal; }
+.slide a { color: #c2884a; border-bottom-color: #c2884a; }
+.slide a:hover { color: #d4995a; }
+.slide hr { background: #483020; }
+
+/* ── Code ── */
+.slide code {
+  background: rgba(194,136,74,.08);
+  border: 1px solid #483020;
+  color: #c2884a;
+}
+.slide pre {
+  background: #140c06;
+  border: 1px solid #483020;
+  color: #b09878;
+}
+
+/* ── Blockquote ── */
+.slide blockquote {
+  border-left-color: #c2884a;
+  background: rgba(194,136,74,.08);
+}
+.slide blockquote p { color: #f0e0cc; }
+
+/* ── Table ── */
+.slide th { color: #f0e0cc; background: #241810; }
+.slide td { color: #b09878; border-bottom-color: #483020; }
+.slide th { border-bottom: 1px solid #483020; }
+.slide tr:hover td { background: #302018; }
+
+/* ── Images ── */
+.slide img { border: 1px solid #483020; }
+
+/* ── Nav bar ── */
+.nav-bar {
+  background: #241810;
+  border: 1px solid #483020;
+}
+.nav-bar button { color: #b09878; }
+.nav-bar button:hover { color: #f0e0cc; background: #302018; }
+.counter { color: #b09878; }
+
+/* ── Dots ── */
+.dot { background: #483020; }
+.dot.active { background: #c2884a; box-shadow: 0 0 8px #c2884a; }
+.dot:hover { background: #b09878; }
+
+/* ── Progress ── */
+.progress {
+  background: linear-gradient(90deg, #c2884a, #d4995a);
+}
+
+/* ── Settings ── */
+.settings-btn {
+  color: #b09878;
+  border-color: #483020;
+  background: #241810;
+}
+.settings-btn:hover { color: #f0e0cc; border-color: #c2884a; }
+.settings-panel {
+  background: #241810;
+  border-color: #483020;
+}
+.settings-panel h3 { color: #b09878; }
+.theme-option {
+  color: #b09878;
+}
+.theme-option:hover {
+  background: #302018;
+  color: #f0e0cc;
+}
+.theme-option.active {
+  background: rgba(194,136,74,.08);
+  color: #c2884a;
+  border-color: #c2884a;
+}
