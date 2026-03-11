@@ -1,6 +1,6 @@
 """FastAPI application factory for WanGame Eval.
 
-Creates the app, mounts routers, initializes database on startup,
+Creates the app, mounts routers, initializes storage on startup,
 and serves static frontend files.
 """
 
@@ -13,20 +13,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.server.database import Database
+from app.server.storage import Storage
 from app.server.routes import settings, videos, data_ops, results
 
 logger = logging.getLogger("wangame.server")
 
 
 def create_app(
-    db_path: str = "eval.db",
+    data_dir: str = "data",
     static_dir: str | None = None,
+    # Legacy compat: accept db_path but ignore it
+    db_path: str | None = None,
 ) -> FastAPI:
     """Create and configure the FastAPI application.
 
     Args:
-        db_path: Path to SQLite database file. Use ":memory:" for tests.
+        data_dir: Path to data directory for JSONL/JSON storage.
         static_dir: Path to static frontend files. None to skip mounting.
     """
     app = FastAPI(
@@ -46,14 +48,14 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # Database
-    db = Database(db_path)
-    app.state.db = db
+    # Storage (JSONL + JSON files)
+    store = Storage(data_dir)
+    app.state.db = store  # keep as .db for route handler compat
 
     @app.on_event("startup")
     async def startup():
-        db.init()
-        logger.info("WanGame Eval API started (db=%s)", db_path)
+        store.init()
+        logger.info("WanGame Eval API started (data_dir=%s)", data_dir)
 
     # API routers
     app.include_router(settings.router)

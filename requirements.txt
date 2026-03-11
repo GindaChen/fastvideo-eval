@@ -4,4 +4,3 @@ requests>=2.31
 fastapi>=0.104
 uvicorn[standard]>=0.24
 python-multipart>=0.0.6
-aiosqlite>=0.19

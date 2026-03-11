@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.server.auth import get_db
-from app.server.database import Database
+from app.server.storage import Storage
 from app.wandb_client.config import WandBConfig
 from app.wandb_client.client import WandBClient
 from app.wandb_client.models import PromptInfo
@@ -66,7 +66,7 @@ class VideoItem(BaseModel):
 # Client factory
 # --------------------------------------------------------------------------- #
 
-def _make_client(db: Database) -> WandBClient:
+def _make_client(db: Storage) -> WandBClient:
     """Create a WandBClient from stored settings."""
     settings = db.get_all_settings()
     config = WandBConfig(
@@ -121,7 +121,7 @@ class MatrixInfo(BaseModel):
 # --------------------------------------------------------------------------- #
 
 @router.get("/matrix/{run_id}", response_model=MatrixInfo)
-async def get_matrix(run_id: str, db: Database = Depends(get_db)):
+async def get_matrix(run_id: str, db: Storage = Depends(get_db)):
     """Discover the video matrix dimensions from run config (fast, no file scan).
 
     Uses run.config for validation_steps + validation_num_samples, and
@@ -167,7 +167,7 @@ async def get_matrix(run_id: str, db: Database = Depends(get_db)):
     return result
 
 @router.get("/runs", response_model=list[RunItem])
-async def list_runs(db: Database = Depends(get_db)):
+async def list_runs(db: Storage = Depends(get_db)):
     """List all runs in the WandB project."""
     client = _make_client(db)
     try:
@@ -182,7 +182,7 @@ async def list_runs(db: Database = Depends(get_db)):
 
 
 @router.get("/checkpoints/{run_id}", response_model=list[CheckpointItem])
-async def list_checkpoints(run_id: str, db: Database = Depends(get_db)):
+async def list_checkpoints(run_id: str, db: Storage = Depends(get_db)):
     """List all checkpoints (steps with videos) for a run."""
     client = _make_client(db)
     try:
@@ -204,7 +204,7 @@ async def list_checkpoints(run_id: str, db: Database = Depends(get_db)):
 async def list_videos(
     run_id: str,
     step: int,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """List video metadata for a step. No video downloads — just captions + proxy URLs."""
     cache_key = f"{run_id}:{step}"
@@ -241,7 +241,7 @@ async def proxy_video(
     run_id: str,
     step: int,
     index: int,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Download a single video from WandB (with local caching) and stream it."""
     cached = _cache_path(run_id, step, index)

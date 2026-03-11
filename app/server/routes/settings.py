@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.server.auth import get_db, verify_token
-from app.server.database import Database
+from app.server.storage import Storage
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -54,7 +54,7 @@ class ConnectionTestResponse(BaseModel):
 # --------------------------------------------------------------------------- #
 
 @router.get("", response_model=SettingsResponse)
-async def get_settings(db: Database = Depends(get_db)):
+async def get_settings(db: Storage = Depends(get_db)):
     """Return current settings with API key masked."""
     settings = db.get_all_settings()
     api_key = settings.get("wandb_api_key", "")
@@ -71,7 +71,7 @@ async def get_settings(db: Database = Depends(get_db)):
 @router.put("", response_model=SettingsResponse)
 async def update_settings(
     body: SettingsUpdate,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Update server settings."""
     if body.wandb_api_key is not None:
@@ -91,7 +91,7 @@ async def update_settings(
 @router.post("/test", response_model=ConnectionTestResponse)
 async def test_connection(
     body: ConnectionTestRequest,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Test WandB connection with provided or stored credentials."""
     api_key = body.wandb_api_key or db.get_setting("wandb_api_key") or ""

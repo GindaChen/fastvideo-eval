@@ -10,12 +10,12 @@ from typing import Optional
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.server.database import Database
+from app.server.storage import Storage
 
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_db(request: Request) -> Database:
+def get_db(request: Request) -> Storage:
     """FastAPI dependency: get the Database instance from app state."""
     return request.app.state.db
 
@@ -29,7 +29,7 @@ async def verify_token(
     If no auth_token is configured in settings, auth is bypassed
     (local dev mode).
     """
-    db: Database = request.app.state.db
+    db: Storage = request.app.state.db
     configured_token = db.get_setting("auth_token")
 
     # No token configured → bypass auth (local dev)

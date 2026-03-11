@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.server.auth import get_db, verify_token
-from app.server.database import Database
+from app.server.storage import Storage
 
 router = APIRouter(prefix="/api", tags=["data-ops"])
 
@@ -90,25 +90,15 @@ class HealthResponse(BaseModel):
 # --------------------------------------------------------------------------- #
 
 @router.get("/health", response_model=HealthResponse)
-async def health(db: Database = Depends(get_db)):
+async def health(db: Storage = Depends(get_db)):
     """Service health check."""
-    try:
-        with db.conn() as c:
-            c.execute("SELECT 1")
-        db_status = "ok"
-    except Exception:
-        db_status = "error"
-
-    return HealthResponse(
-        status="ok" if db_status == "ok" else "degraded",
-        database=db_status,
-    )
+    return HealthResponse(status="ok", database="ok")
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
 async def dashboard(
     checkpoint_id: Optional[str] = None,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Get evaluation round status."""
     chunks = db.get_chunks(checkpoint_id)
@@ -154,7 +144,7 @@ async def dashboard(
 @router.get("/chunks", response_model=list[ChunkResponse])
 async def list_chunks(
     checkpoint_id: Optional[str] = None,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """List evaluation chunks."""
     chunks = db.get_chunks(checkpoint_id)
@@ -165,7 +155,7 @@ async def list_chunks(
 async def claim_chunk(
     chunk_id: str,
     body: ClaimRequest,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Claim a chunk for evaluation."""
     ok = db.claim_chunk(chunk_id, body.evaluator)
@@ -180,7 +170,7 @@ async def claim_chunk(
 @router.get("/chunks/{chunk_id}/videos", response_model=list[VideoRatingStatus])
 async def chunk_videos(
     chunk_id: str,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Get videos for a chunk with per-video rating status."""
     chunks = db.get_chunks()
@@ -215,7 +205,7 @@ async def chunk_videos(
 @router.post("/ratings", response_model=RatingResponse)
 async def submit_rating(
     body: RatingRequest,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Submit a video rating (append-only)."""
     if body.rating not in ("good", "bad", "skip"):
@@ -244,7 +234,7 @@ async def submit_rating(
 @router.get("/skipped", response_model=list[VideoRatingStatus])
 async def skipped_videos(
     checkpoint_id: Optional[str] = None,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """List all skipped videos for the revisit queue."""
     if not checkpoint_id:
@@ -279,48 +269,20 @@ class UpdateIssuesRequest(BaseModel):
 
 @router.get("/ratings/bad")
 async def bad_ratings(
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """List all bad-rated videos (latest per video)."""
-    with db.conn() as c:
-        rows = c.execute(
-            """SELECT * FROM ratings
-               WHERE rating = 'bad'
-               ORDER BY timestamp DESC""",
-        ).fetchall()
-
-    # Deduplicate: keep latest per video_id
-    seen = set()
-    result = []
-    for r in rows:
-        vid = r["video_id"]
-        if vid not in seen:
-            seen.add(vid)
-            d = dict(r)
-            d["issues"] = json.loads(d["issues"]) if d["issues"] else []
-            result.append(d)
-    return result
+    return db.get_bad_ratings()
 
 
 @router.patch("/ratings/{rating_id}/issues")
 async def update_rating_issues(
     rating_id: str,
     body: UpdateIssuesRequest,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Update issues and free_text on an existing rating."""
-    with db.conn() as c:
-        row = c.execute(
-            "SELECT rating_id FROM ratings WHERE rating_id = ?",
-            (rating_id,),
-        ).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Rating not found")
-
-        c.execute(
-            """UPDATE ratings
-               SET issues = ?, free_text = ?
-               WHERE rating_id = ?""",
-            (json.dumps(body.issues), body.free_text, rating_id),
-        )
+    found = db.update_rating_issues(rating_id, body.issues, body.free_text)
+    if not found:
+        raise HTTPException(status_code=404, detail="Rating not found")
     return {"status": "updated", "rating_id": rating_id}

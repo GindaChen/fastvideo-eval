@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.server.auth import get_db
-from app.server.database import Database
+from app.server.storage import Storage
 
 router = APIRouter(prefix="/api/results", tags=["results"])
 
@@ -67,17 +67,17 @@ class VideoRating(BaseModel):
 # --------------------------------------------------------------------------- #
 
 @router.get("", response_model=list[ScoreSummary])
-async def list_scores(db: Database = Depends(get_db)):
+async def list_scores(db: Storage = Depends(get_db)):
     """Aggregated scores across all checkpoints."""
-    with db.conn() as c:
-        rows = c.execute(
-            """SELECT DISTINCT checkpoint_id FROM checkpoint_scores
-               ORDER BY checkpoint_id"""
-        ).fetchall()
+    # Get unique checkpoint IDs from all ratings
+    all_ratings = db._load_all_ratings()
+    checkpoint_ids = sorted(set(r.get("checkpoint_id", "") for r in all_ratings))
 
     result = []
-    for row in rows:
-        score = db.get_latest_score(row["checkpoint_id"])
+    for ckpt_id in checkpoint_ids:
+        if not ckpt_id:
+            continue
+        score = db.get_latest_score(ckpt_id)
         if score:
             result.append(ScoreSummary(**{
                 k: score[k] for k in ScoreSummary.model_fields
@@ -90,22 +90,22 @@ async def export_csv(
     checkpoint_id: Optional[str] = None,
     category: Optional[str] = None,
     rating: Optional[str] = None,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Export filtered ratings as CSV."""
-    with db.conn() as c:
-        query = "SELECT * FROM ratings WHERE 1=1"
-        params: list = []
+    all_ratings = db._load_all_ratings()
 
-        if checkpoint_id:
-            query += " AND checkpoint_id = ?"
-            params.append(checkpoint_id)
-        if rating:
-            query += " AND rating = ?"
-            params.append(rating)
+    # Filter
+    rows = []
+    for r in all_ratings:
+        if checkpoint_id and r.get("checkpoint_id") != checkpoint_id:
+            continue
+        if rating and r.get("rating") != rating:
+            continue
+        rows.append(r)
 
-        query += " ORDER BY timestamp"
-        rows = c.execute(query, params).fetchall()
+    # Sort by timestamp
+    rows.sort(key=lambda r: r.get("timestamp", ""))
 
     # Build CSV
     output = io.StringIO()
@@ -113,7 +113,7 @@ async def export_csv(
         writer = csv.DictWriter(output, fieldnames=rows[0].keys())
         writer.writeheader()
         for row in rows:
-            writer.writerow(dict(row))
+            writer.writerow(row)
 
     output.seek(0)
     return StreamingResponse(
@@ -126,7 +126,7 @@ async def export_csv(
 @router.get("/{checkpoint_id}", response_model=CheckpointDetail)
 async def checkpoint_detail(
     checkpoint_id: str,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Per-checkpoint detailed breakdown with per-task scores."""
     score = db.get_latest_score(checkpoint_id)
@@ -162,7 +162,7 @@ async def checkpoint_videos(
     category: Optional[str] = None,
     rating_filter: Optional[str] = Query(None, alias="rating"),
     evaluator: Optional[str] = None,
-    db: Database = Depends(get_db),
+    db: Storage = Depends(get_db),
 ):
     """Per-video ratings for a checkpoint (filterable)."""
     ratings = db.get_ratings_for_checkpoint(checkpoint_id)
@@ -174,7 +174,7 @@ async def checkpoint_videos(
         if evaluator and r["evaluator"] != evaluator:
             continue
 
-        issues = json.loads(r["issues"]) if r["issues"] else None
+        issues = r.get("issues")  # already a list from JSONL
 
         result.append(VideoRating(
             video_id=r["video_id"],

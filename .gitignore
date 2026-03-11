@@ -36,3 +36,6 @@ Thumbs.db
 # Virtual environments
 .venv/
 venv/
+
+# Data files (ratings, config)
+data/
