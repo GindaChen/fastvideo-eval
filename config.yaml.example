@@ -1,0 +1,40 @@
+# WandB connection
+wandb:
+  project: "wangame_1.3b"
+  entity: "kaiqin_kong_ucsd"
+  api_key: "$WANDB_API_KEY"          # Must be set in environment
+
+# Evaluation settings
+evaluation:
+  chunk_size: 20                      # Videos per chunk
+  default_playback_speed: "2x"        # Default video speed
+  auto_play: true                     # Auto-play video on card entry
+  max_evaluators: 10                  # Max concurrent evaluators
+  require_all_chunks: false           # Allow partial evaluation submission
+
+# Scoring settings
+scoring:
+  easy_tolerance: 0.0                 # No tolerance for easy scene errors
+  hard_tolerance: 0.15                # 15% tolerance for hard scenes
+  min_videos_per_category: 5          # Minimum rated videos before category score is valid
+  aggregation_method: "weighted"      # "weighted" | "uniform"
+  category_weights:                   # Relative weights per category (sum to 1.0)
+    basic_movement: 0.25
+    camera_control: 0.20
+    jump_sprint: 0.15
+    hotbar: 0.10
+    stability: 0.15
+    combinations: 0.15
+
+# Infrastructure
+server:
+  host: "0.0.0.0"
+  port: 8080
+  database: "eval.db"                 # SQLite file path
+
+# Backup
+backup:
+  enabled: true
+  interval_minutes: 5
+  retention_count: 10
+  backup_dir: "backups/"
