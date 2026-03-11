@@ -72,22 +72,14 @@ function toggleSidebar() {
     document.getElementById('sidebar-backdrop').classList.toggle('show');
 }
 
-// Open sidebar by default on desktop
-if (window.innerWidth >= 768) {
-    document.getElementById('sidebar').classList.add('open');
-}
-
-// Close sidebar when navigating (mobile only)
+// Close sidebar when navigating
 document.querySelectorAll('.sidebar-link').forEach(link => {
     link.addEventListener('click', e => {
         e.preventDefault();
         const page = link.dataset.page;
         if (page) router.navigate(page);
-        // Only close the drawer on mobile
-        if (window.innerWidth < 768) {
-            document.getElementById('sidebar').classList.remove('open');
-            document.getElementById('sidebar-backdrop').classList.remove('show');
-        }
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebar-backdrop').classList.remove('show');
     });
 });
 async function loadDashboard() {
