@@ -6,6 +6,8 @@ Endpoints:
   POST /api/chunks/{id}/claim   — claim a chunk
   GET  /api/chunks/{id}/videos  — videos for a chunk with rating status
   POST /api/ratings             — submit a rating (append-only)
+  GET  /api/ratings/export      — download ratings.jsonl
+  POST /api/ratings/import      — upload and merge ratings.jsonl
   GET  /api/skipped             — all skipped videos for revisit queue
   GET  /api/health              — service health check
 """
@@ -15,7 +17,8 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from app.server.auth import get_db, verify_token
@@ -286,3 +289,71 @@ async def update_rating_issues(
     if not found:
         raise HTTPException(status_code=404, detail="Rating not found")
     return {"status": "updated", "rating_id": rating_id}
+
+
+# ── Export / Import ──────────────────────────────────────────────────────
+
+@router.get("/ratings/export")
+async def export_ratings(db: Storage = Depends(get_db)):
+    """Download the raw ratings.jsonl file."""
+    path = db._ratings_path()
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="No ratings file found")
+    return FileResponse(
+        path=str(path),
+        media_type="application/x-jsonlines",
+        filename="ratings.jsonl",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
+@router.post("/ratings/import")
+async def import_ratings(
+    file: UploadFile = File(...),
+    db: Storage = Depends(get_db),
+):
+    """Upload a JSONL file and merge with existing ratings (dedup by rating_id)."""
+    content = await file.read()
+    text = content.decode("utf-8", errors="replace")
+
+    # Parse incoming ratings
+    incoming = []
+    for line_num, line in enumerate(text.splitlines(), 1):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            incoming.append(json.loads(line))
+        except json.JSONDecodeError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON on line {line_num}",
+            )
+
+    # Load existing and merge (dedup by rating_id)
+    existing = db._load_all_ratings()
+    existing_ids = {r.get("rating_id") for r in existing}
+
+    new_count = 0
+    for r in incoming:
+        rid = r.get("rating_id")
+        if rid and rid not in existing_ids:
+            existing.append(r)
+            existing_ids.add(rid)
+            new_count += 1
+
+    # Write merged result
+    path = db._ratings_path()
+    with db._lock:
+        with open(path, "w") as f:
+            for r in existing:
+                f.write(json.dumps(r) + "\n")
+        db._invalidate_cache()
+
+    return {
+        "status": "imported",
+        "total_in_file": len(incoming),
+        "new_ratings": new_count,
+        "duplicates_skipped": len(incoming) - new_count,
+        "total_after_merge": len(existing),
+    }

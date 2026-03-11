@@ -103,12 +103,24 @@
                 </button>
             </div>
 
-            <!-- Chunk grid -->
+            <!-- Data management -->
             <div class="section-header">
-                <h2>Evaluation Chunks</h2>
+                <h2>Data Management</h2>
             </div>
-            <div class="chunk-grid" id="chunk-grid">
-                <div class="empty-state">No chunks created yet. Configure your run in Settings.</div>
+            <div class="data-mgmt">
+                <p class="subtitle" style="margin-bottom:12px">Ratings are saved to <code>data/ratings.jsonl</code>
+                    immediately on each evaluation.</p>
+                <div class="action-row" style="gap:10px">
+                    <a href="/api/ratings/export" download="ratings.jsonl" class="btn btn-secondary">
+                        📥 Export ratings.jsonl
+                    </a>
+                    <label class="btn btn-secondary" style="cursor:pointer">
+                        📤 Import ratings.jsonl
+                        <input type="file" accept=".jsonl,.json" id="import-file" onchange="importRatings(this)"
+                            style="display:none">
+                    </label>
+                </div>
+                <div id="import-status" class="subtitle" style="margin-top:8px"></div>
             </div>
         </section>
 
@@ -393,12 +405,7 @@
     <!-- Toast notifications -->
     <div id="toast-container" class="toast-container"></div>
 
-    <script src="js/core.js"></script>
-    <script src="js/evaluate.js"></script>
-    <script src="js/settings.js"></script>
-    <script src="js/review.js"></script>
-    <script src="js/results.js"></script>
-    <script src="js/matrix.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>
