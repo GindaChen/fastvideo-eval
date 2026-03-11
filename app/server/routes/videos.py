@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import os
 import logging
+import shutil
 import threading
 import time
 from pathlib import Path
@@ -282,6 +283,28 @@ async def proxy_video(
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
+    # If another thread is downloading this file, wait for it
+    tmp = cached.with_suffix(".tmp")
+    if tmp.exists():
+        for _ in range(60):  # wait up to 30s
+            time.sleep(0.5)
+            if cached.exists() and cached.stat().st_size > 0:
+                return FileResponse(
+                    path=str(cached),
+                    media_type="video/mp4",
+                    headers={"Cache-Control": "public, max-age=86400"},
+                )
+            if not tmp.exists():
+                break
+
+    # Check again after waiting
+    if cached.exists() and cached.stat().st_size > 0:
+        return FileResponse(
+            path=str(cached),
+            media_type="video/mp4",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     # Clean up any stale 0-byte files
     if cached.exists():
         cached.unlink()
@@ -317,37 +340,76 @@ async def proxy_video(
     )
 
 
-# --------------------------------------------------------------------------- #
-# Shared download helper
-# --------------------------------------------------------------------------- #
+# Per-file download locks: prevent concurrent downloads of the same video
+_download_locks: dict[str, threading.Lock] = {}
+_download_locks_guard = threading.Lock()
+
+
+def _get_download_lock(path: str) -> threading.Lock:
+    """Get or create a lock for a specific file path."""
+    with _download_locks_guard:
+        if path not in _download_locks:
+            _download_locks[path] = threading.Lock()
+        return _download_locks[path]
+
 
 def _download_single_video(
     db: Storage, run_id: str, video, dest: Path
 ) -> None:
     """Download one video from WandB and save it to `dest`.
 
-    Re-used by both the on-demand proxy and the bulk cache warmer.
+    Atomic: downloads to .tmp, then renames. Per-file locked to
+    prevent concurrent downloads of the same video.
     """
-    client = _make_client(db)
-    run = client.api.run(f"{client.project_path}/{run_id}")
-    wandb_file = run.file(video.wandb_path)
+    lock = _get_download_lock(str(dest))
+    if not lock.acquire(timeout=120):  # wait up to 2min for another download
+        # Another thread is downloading — check if done
+        if dest.exists() and dest.stat().st_size > 0:
+            return
+        raise RuntimeError(f"Timeout waiting for download lock: {dest}")
 
-    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # Double-check: another thread may have finished while we waited
+        if dest.exists() and dest.stat().st_size > 0:
+            return
 
-    wandb_file.download(root=str(dest.parent), replace=True)
+        client = _make_client(db)
+        run = client.api.run(f"{client.project_path}/{run_id}")
+        wandb_file = run.file(video.wandb_path)
 
-    # WandB preserves directory structure — find the file
-    downloaded = dest.parent / video.wandb_path
-    if not downloaded.exists():
-        candidates = list(dest.parent.rglob("*.mp4"))
-        target_name = Path(video.wandb_path).name
-        downloaded = next((c for c in candidates if c.name == target_name), None)
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
-    if downloaded and downloaded.exists() and downloaded.stat().st_size > 0:
-        downloaded.rename(dest)
-        logger.info("Cached video at %s (%d bytes)", dest, dest.stat().st_size)
-    else:
-        raise RuntimeError(f"Downloaded file not found or empty for {video.wandb_path}")
+        # Download to a temp directory, then move atomically
+        tmp_dir = dest.parent / f".tmp_{dest.stem}"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Mark download in-flight with a .tmp sentinel
+        tmp_sentinel = dest.with_suffix(".tmp")
+        tmp_sentinel.touch()
+
+        try:
+            wandb_file.download(root=str(tmp_dir), replace=True)
+
+            # WandB preserves directory structure — find the file
+            downloaded = tmp_dir / video.wandb_path
+            if not downloaded.exists():
+                candidates = list(tmp_dir.rglob("*.mp4"))
+                target_name = Path(video.wandb_path).name
+                downloaded = next((c for c in candidates if c.name == target_name), None)
+
+            if downloaded and downloaded.exists() and downloaded.stat().st_size > 0:
+                # Atomic move to final destination
+                shutil.move(str(downloaded), str(dest))
+                logger.info("Cached video at %s (%d bytes)", dest, dest.stat().st_size)
+            else:
+                raise RuntimeError(f"Downloaded file not found or empty for {video.wandb_path}")
+        finally:
+            # Clean up temp dir and sentinel
+            shutil.rmtree(str(tmp_dir), ignore_errors=True)
+            if tmp_sentinel.exists():
+                tmp_sentinel.unlink()
+    finally:
+        lock.release()
 
 
 # --------------------------------------------------------------------------- #
