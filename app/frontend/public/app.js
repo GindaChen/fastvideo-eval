@@ -581,6 +581,7 @@ async function doSubmitRating(rating, issues = [], freeText = '') {
     const step = video._step || 0;
 
     try {
+        const localSettings = getLocalSettings();
         await api('/api/ratings', {
             method: 'POST',
             body: JSON.stringify({
@@ -593,6 +594,9 @@ async function doSubmitRating(rating, issues = [], freeText = '') {
                 issues: issues.length > 0 ? issues : undefined,
                 free_text: freeText || undefined,
                 playback_speed: `${state.playbackSpeed}x`,
+                wandb_entity: localSettings.wandb_entity,
+                wandb_project: localSettings.wandb_project,
+                wandb_run_id: state.runId,
             }),
         });
     } catch {
@@ -1442,6 +1446,7 @@ async function matrixRateFocused(rating) {
     const evaluator = localStorage.getItem('evaluator') || document.getElementById('setting-evaluator')?.value || 'evaluator';
 
     try {
+        const localSettings = getLocalSettings();
         await api('/api/ratings', {
             method: 'POST',
             body: JSON.stringify({
@@ -1452,6 +1457,9 @@ async function matrixRateFocused(rating) {
                 evaluator: evaluator,
                 rating: rating,
                 issues: [],
+                wandb_entity: localSettings.wandb_entity,
+                wandb_project: localSettings.wandb_project,
+                wandb_run_id: runId,
             }),
         });
 
@@ -1510,7 +1518,91 @@ async function importRatings(input) {
     input.value = ''; // reset file input
 }
 
-// Init
-document.addEventListener('DOMContentLoaded', loadDashboard);
-if (document.readyState !== 'loading') loadDashboard();
+// --------------------------------------------------------------------------
+// Onboarding — show once if evaluator name not set
+// --------------------------------------------------------------------------
+function checkOnboarding() {
+    const name = localStorage.getItem('evaluator');
+    if (!name || name === 'evaluator') {
+        showOnboardingOverlay();
+    }
+}
 
+function showOnboardingOverlay() {
+    // Create overlay if it doesn't exist
+    if (document.getElementById('onboard-overlay')) return;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'onboard-overlay';
+    overlay.style.cssText = `
+        position:fixed; inset:0; z-index:10000;
+        background:rgba(0,0,0,0.85); backdrop-filter:blur(12px);
+        display:flex; align-items:center; justify-content:center;
+        font-family:Inter,system-ui,sans-serif;
+    `;
+    overlay.innerHTML = `
+        <div style="
+            background:var(--surface, #16161e); border:1px solid var(--border, #2a2a3a);
+            border-radius:16px; padding:40px 36px; max-width:380px; width:90%;
+            text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.5);
+        ">
+            <div style="font-size:48px;margin-bottom:12px">🎮</div>
+            <h2 style="color:var(--text, #e4e4e7);margin:0 0 6px;font-size:22px;font-weight:600">
+                Welcome to WanGame Eval
+            </h2>
+            <p style="color:var(--text-secondary, #8b8b9e);margin:0 0 24px;font-size:14px;line-height:1.5">
+                Enter your name so ratings are saved to your personal file.
+            </p>
+            <input id="onboard-name" type="text" placeholder="Your name"
+                autofocus
+                style="
+                    width:100%; box-sizing:border-box; padding:12px 16px;
+                    background:var(--bg, #0a0a0f); border:1px solid var(--border, #2a2a3a);
+                    border-radius:8px; color:var(--text, #e4e4e7); font-size:16px;
+                    outline:none; margin-bottom:16px;
+                    transition:border-color 0.2s;
+                ">
+            <button id="onboard-btn" onclick="submitOnboarding()" style="
+                width:100%; padding:12px; border:none; border-radius:8px;
+                background:var(--accent, #6c63ff); color:#fff; font-size:16px;
+                font-weight:600; cursor:pointer; transition:opacity 0.2s;
+            ">Start Evaluating</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Allow Enter to submit
+    document.getElementById('onboard-name').addEventListener('keydown', e => {
+        if (e.key === 'Enter') submitOnboarding();
+    });
+
+    // Focus the input
+    setTimeout(() => document.getElementById('onboard-name').focus(), 100);
+}
+
+function submitOnboarding() {
+    const input = document.getElementById('onboard-name');
+    const name = (input?.value || '').trim();
+    if (!name) {
+        input.style.borderColor = '#f85149';
+        input.placeholder = 'Please enter a name';
+        return;
+    }
+    state.evaluator = name;
+    localStorage.setItem('evaluator', name);
+
+    const overlay = document.getElementById('onboard-overlay');
+    if (overlay) overlay.remove();
+
+    toast(`Welcome, ${name}!`, 'success');
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+    checkOnboarding();
+    loadDashboard();
+});
+if (document.readyState !== 'loading') {
+    checkOnboarding();
+    loadDashboard();
+}

@@ -69,6 +69,9 @@ class RatingRequest(BaseModel):
     playback_speed: Optional[str] = None
     view_duration_ms: Optional[int] = None
     supersedes: Optional[str] = None
+    wandb_entity: Optional[str] = None
+    wandb_project: Optional[str] = None
+    wandb_run_id: Optional[str] = None
 
 
 class RatingResponse(BaseModel):
@@ -229,6 +232,9 @@ async def submit_rating(
         playback_speed=body.playback_speed,
         view_duration_ms=body.view_duration_ms,
         supersedes=body.supersedes,
+        wandb_entity=body.wandb_entity,
+        wandb_project=body.wandb_project,
+        wandb_run_id=body.wandb_run_id,
     )
 
     return RatingResponse(rating_id=rating_id, status="stored")
@@ -295,15 +301,21 @@ async def update_rating_issues(
 
 @router.get("/ratings/export")
 async def export_ratings(db: Storage = Depends(get_db)):
-    """Download the raw ratings.jsonl file."""
-    path = db._ratings_path()
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="No ratings file found")
-    return FileResponse(
-        path=str(path),
+    """Download all ratings merged into a single JSONL file."""
+    import io
+    all_ratings = db._load_all_ratings()
+    output = "\n".join(json.dumps(r) for r in all_ratings)
+    if output:
+        output += "\n"
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter([output]),
         media_type="application/x-jsonlines",
-        filename="ratings.jsonl",
-        headers={"Cache-Control": "no-cache"},
+        headers={
+            "Content-Disposition": "attachment; filename=ratings.jsonl",
+            "Cache-Control": "no-cache",
+        },
     )
 
 
@@ -338,17 +350,16 @@ async def import_ratings(
     for r in incoming:
         rid = r.get("rating_id")
         if rid and rid not in existing_ids:
-            existing.append(r)
+            # Route to the correct per-user file
+            evaluator = r.get("evaluator", "anonymous")
+            user_path = db._ratings_path(evaluator)
+            with db._lock:
+                with open(user_path, "a") as f:
+                    f.write(json.dumps(r) + "\n")
             existing_ids.add(rid)
             new_count += 1
 
-    # Write merged result
-    path = db._ratings_path()
-    with db._lock:
-        with open(path, "w") as f:
-            for r in existing:
-                f.write(json.dumps(r) + "\n")
-        db._invalidate_cache()
+    db._invalidate_cache()
 
     return {
         "status": "imported",

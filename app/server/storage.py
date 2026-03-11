@@ -1,9 +1,10 @@
 """JSONL + JSON file-based storage for WanGame Eval.
 
 Replaces SQLite with simple file-based storage:
-  - data/ratings.jsonl   — append-only ratings (one JSON object per line)
-  - data/config.json     — server settings (WandB API key, run ID, etc.)
+  - data/ratings_{evaluator}.jsonl — per-user append-only ratings
+  - data/config.json               — server settings (WandB API key, run ID, etc.)
 
+Each evaluator gets their own JSONL file, eliminating concurrent-write issues.
 All writes go through helper functions. Human-readable, git-friendly.
 """
 
@@ -50,10 +51,10 @@ class Storage:
         if not config_path.exists():
             config_path.write_text(json.dumps(_DEFAULT_CONFIG, indent=2))
 
-        # Create empty ratings.jsonl if needed
-        ratings_path = self.data_dir / "ratings.jsonl"
-        if not ratings_path.exists():
-            ratings_path.touch()
+        # Migrate legacy single ratings.jsonl → per-user files
+        legacy_path = self.data_dir / "ratings.jsonl"
+        if legacy_path.exists() and legacy_path.stat().st_size > 0:
+            self._migrate_legacy_ratings(legacy_path)
 
         logger.info("Storage initialized at %s", self.data_dir)
 
@@ -80,32 +81,71 @@ class Storage:
         self._config_path().write_text(json.dumps(settings, indent=2))
 
     # ------------------------------------------------------------------ #
-    # Ratings (append-only JSONL)
+    # Ratings (per-user append-only JSONL)
     # ------------------------------------------------------------------ #
 
-    def _ratings_path(self) -> Path:
-        return self.data_dir / "ratings.jsonl"
+    def _ratings_path(self, evaluator: str) -> Path:
+        """Per-user ratings file: data/ratings_{evaluator}.jsonl"""
+        safe_name = self._safe_evaluator_name(evaluator)
+        return self.data_dir / f"ratings_{safe_name}.jsonl"
+
+    @staticmethod
+    def _safe_evaluator_name(name: str) -> str:
+        """Sanitize evaluator name for use as a filename."""
+        import re
+        safe = re.sub(r'[^\w\-]', '_', name.strip().lower())
+        return safe or "anonymous"
+
+    def _all_ratings_paths(self) -> list[Path]:
+        """Glob all per-user ratings files."""
+        return sorted(self.data_dir.glob("ratings_*.jsonl"))
 
     def _invalidate_cache(self):
         self._ratings_cache = None
 
     def _load_all_ratings(self) -> list[dict[str, Any]]:
-        """Load all ratings from JSONL. Cached until invalidated."""
+        """Load all ratings from all per-user JSONL files. Cached until invalidated."""
         if self._ratings_cache is not None:
             return self._ratings_cache
 
         ratings = []
-        path = self._ratings_path()
-        if path.exists():
+        for path in self._all_ratings_paths():
             for line in path.read_text().splitlines():
                 line = line.strip()
                 if line:
                     try:
                         ratings.append(json.loads(line))
                     except json.JSONDecodeError:
-                        logger.warning("Skipping malformed line in ratings.jsonl")
+                        logger.warning("Skipping malformed line in %s", path.name)
         self._ratings_cache = ratings
         return ratings
+
+    def _migrate_legacy_ratings(self, legacy_path: Path) -> None:
+        """Migrate a single ratings.jsonl into per-user files."""
+        logger.info("Migrating legacy ratings.jsonl to per-user files...")
+        by_user: dict[str, list[str]] = {}  # evaluator → list of JSON lines
+        for line in legacy_path.read_text().splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            evaluator = record.get("evaluator", "anonymous")
+            by_user.setdefault(evaluator, []).append(json.dumps(record))
+
+        for evaluator, lines in by_user.items():
+            user_path = self._ratings_path(evaluator)
+            with open(user_path, "a") as f:
+                for l in lines:
+                    f.write(l + "\n")
+            logger.info("  Migrated %d ratings for '%s'", len(lines), evaluator)
+
+        # Rename legacy file so migration doesn't re-run
+        backup = legacy_path.with_suffix(".jsonl.migrated")
+        legacy_path.rename(backup)
+        logger.info("Legacy ratings.jsonl renamed to %s", backup.name)
 
     def insert_rating(
         self,
@@ -121,8 +161,11 @@ class Storage:
         playback_speed: Optional[str] = None,
         view_duration_ms: Optional[int] = None,
         supersedes: Optional[str] = None,
+        wandb_entity: Optional[str] = None,
+        wandb_project: Optional[str] = None,
+        wandb_run_id: Optional[str] = None,
     ) -> str:
-        """Append a new rating. Returns the generated rating_id."""
+        """Append a new rating to the evaluator's JSONL file. Returns the generated rating_id."""
         rating_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
 
@@ -140,15 +183,19 @@ class Storage:
             "playback_speed": playback_speed,
             "view_duration_ms": view_duration_ms,
             "supersedes": supersedes,
+            "wandb_entity": wandb_entity,
+            "wandb_project": wandb_project,
+            "wandb_run_id": wandb_run_id,
             "timestamp": now,
         }
 
+        user_path = self._ratings_path(evaluator)
         with self._lock:
-            with open(self._ratings_path(), "a") as f:
+            with open(user_path, "a") as f:
                 f.write(json.dumps(record) + "\n")
             self._invalidate_cache()
 
-        logger.info("Rating %s: %s → %s by %s", rating_id, video_id, rating, evaluator)
+        logger.info("Rating %s: %s → %s by %s (→ %s)", rating_id, video_id, rating, evaluator, user_path.name)
         return rating_id
 
     def get_ratings_for_checkpoint(
@@ -197,39 +244,39 @@ class Storage:
     def update_rating_issues(
         self, rating_id: str, issues: list[str], free_text: Optional[str] = None
     ) -> bool:
-        """Update issues on a rating by rewriting the JSONL file.
+        """Update issues on a rating by rewriting the per-user JSONL file.
 
-        Since JSONL is append-only for ratings, we handle issue updates
-        by rewriting the file. This is fine for the scale we operate at.
+        Searches all per-user files to find the rating, then rewrites that file.
         """
-        path = self._ratings_path()
-        lines = path.read_text().splitlines()
-        found = False
-        new_lines = []
+        for path in self._all_ratings_paths():
+            lines = path.read_text().splitlines()
+            found = False
+            new_lines = []
 
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
-                new_lines.append(line)
-                continue
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    new_lines.append(line)
+                    continue
 
-            if record.get("rating_id") == rating_id:
-                record["issues"] = issues
-                if free_text is not None:
-                    record["free_text"] = free_text
-                found = True
-            new_lines.append(json.dumps(record))
+                if record.get("rating_id") == rating_id:
+                    record["issues"] = issues
+                    if free_text is not None:
+                        record["free_text"] = free_text
+                    found = True
+                new_lines.append(json.dumps(record))
 
-        if found:
-            with self._lock:
-                path.write_text("\n".join(new_lines) + "\n")
-                self._invalidate_cache()
+            if found:
+                with self._lock:
+                    path.write_text("\n".join(new_lines) + "\n")
+                    self._invalidate_cache()
+                return True
 
-        return found
+        return False
 
     # ------------------------------------------------------------------ #
     # Chunks (simple JSON file, rarely used)

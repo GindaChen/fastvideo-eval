@@ -29,8 +29,15 @@ logger = logging.getLogger("wangame.video")
 
 router = APIRouter(prefix="/api", tags=["videos"])
 
-# Local video cache directory
+# Default video cache directory (overridable via app.state.video_cache_dir)
 CACHE_DIR = Path("video_cache")
+
+
+def _get_cache_dir(request=None) -> Path:
+    """Get the video cache directory, checking app state first."""
+    if request and hasattr(request.app.state, "video_cache_dir"):
+        return Path(request.app.state.video_cache_dir)
+    return CACHE_DIR
 
 
 # --------------------------------------------------------------------------- #
@@ -67,20 +74,33 @@ class VideoItem(BaseModel):
 # --------------------------------------------------------------------------- #
 
 def _make_client(db: Storage) -> WandBClient:
-    """Create a WandBClient from stored settings."""
+    """Create a WandBClient from stored settings.
+
+    Raises HTTPException 400 if no API key is configured — the key is
+    stored server-side via PUT /api/settings, NOT passed per-request.
+    """
     settings = db.get_all_settings()
+    api_key = settings.get("wandb_api_key", "")
+    if not api_key:
+        logger.error("No WandB API key in config.json — user must set it via Settings page")
+        raise HTTPException(
+            status_code=400,
+            detail="No WandB API key configured. Go to Settings and enter your key first.",
+        )
+    logger.debug("WandB client: key=%s…%s", api_key[:4], api_key[-4:] if len(api_key) > 8 else "****")
     config = WandBConfig(
         project=settings.get("wandb_project", "wangame_1.3b"),
         entity=settings.get("wandb_entity", "kaiqin_kong_ucsd"),
-        api_key=settings.get("wandb_api_key", ""),
+        api_key=api_key,
         default_run_id=settings.get("default_run_id", "fif3z1z4"),
     )
     return WandBClient(config)
 
 
-def _cache_path(run_id: str, step: int, index: int) -> Path:
+def _cache_path(run_id: str, step: int, index: int, request=None) -> Path:
     """Local cache path for a video file."""
-    return CACHE_DIR / run_id / f"step_{step}" / f"{index:02d}.mp4"
+    cache_dir = _get_cache_dir(request)
+    return cache_dir / run_id / f"step_{step}" / f"{index:02d}.mp4"
 
 
 # --------------------------------------------------------------------------- #
@@ -241,10 +261,11 @@ async def proxy_video(
     run_id: str,
     step: int,
     index: int,
+    request: Request = None,
     db: Storage = Depends(get_db),
 ):
     """Download a single video from WandB (with local caching) and stream it."""
-    cached = _cache_path(run_id, step, index)
+    cached = _cache_path(run_id, step, index, request)
 
     # Serve from cache if file exists and is non-empty
     if cached.exists() and cached.stat().st_size > 0:
