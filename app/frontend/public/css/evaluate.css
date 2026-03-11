@@ -1090,3 +1090,31 @@
     padding: 1px 4px;
     margin-left: 4px;
 }
+
+/* Keyboard shortcut caps */
+kbd {
+    display: inline-block;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 5px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    vertical-align: middle;
+    margin: 0 1px;
+}
+
+.btn-rate kbd {
+    font-size: 10px;
+    opacity: 0.6;
+    margin-left: 4px;
+}
+
+.matrix-key-hints {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.8;
+}
