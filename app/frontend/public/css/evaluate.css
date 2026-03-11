@@ -955,3 +955,32 @@
     padding: 1px 4px;
     border-radius: 3px;
 }
+
+.matrix-video-cell.focused {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow), 0 0 12px var(--accent-glow);
+    z-index: 2;
+}
+
+.matrix-rating-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    font-size: 14px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 4px;
+    padding: 2px 5px;
+    pointer-events: none;
+}
+
+.matrix-rating-badge.good {
+    background: rgba(63, 185, 80, 0.3);
+}
+
+.matrix-rating-badge.bad {
+    background: rgba(248, 81, 73, 0.3);
+}
+
+.matrix-rating-badge.skip {
+    background: rgba(210, 153, 34, 0.3);
+}

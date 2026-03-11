@@ -650,8 +650,15 @@ function setVideoSize(pct) {
 // Keyboard shortcuts
 // --------------------------------------------------------------------------
 document.addEventListener('keydown', e => {
-    if (state.currentPage !== 'evaluate') return;
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+
+    // Matrix page keyboard handling
+    if (state.currentPage === 'matrix') {
+        handleMatrixKey(e);
+        return;
+    }
+
+    if (state.currentPage !== 'evaluate') return;
 
     switch (e.key) {
         case 'l': case 'L': flashBtn('btn-good'); submitRating('good'); break;
@@ -1076,7 +1083,7 @@ function renderMatrixGrid() {
 
     grid.innerHTML = html;
 
-    // Lazy-load videos as they scroll into view
+    // Lazy-load videos and auto-play as they scroll into view
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(e => {
             if (e.isIntersecting) {
@@ -1084,6 +1091,10 @@ function renderMatrixGrid() {
                 if (video && !video.src) {
                     video.src = video.dataset.proxy;
                     video.preload = 'auto';
+                    video.addEventListener('loadeddata', () => {
+                        video.playbackRate = matrixState.speed;
+                        video.play().catch(() => { });
+                    }, { once: true });
                 }
                 observer.unobserve(e.target);
             }
@@ -1091,6 +1102,19 @@ function renderMatrixGrid() {
     }, { rootMargin: '500px' });
 
     grid.querySelectorAll('.matrix-video-cell').forEach(cell => observer.observe(cell));
+
+    // Click-to-focus: clicking a cell sets keyboard focus to it
+    const rows = grid.querySelectorAll('.matrix-row');
+    rows.forEach((row, ri) => {
+        const cells = row.querySelectorAll('.matrix-video-cell');
+        cells.forEach((cell, ci) => {
+            cell.addEventListener('click', () => {
+                matrixState.focusRow = ri;
+                matrixState.focusCol = ci;
+                updateMatrixFocus();
+            });
+        });
+    });
 }
 
 function matrixPlayAll() { document.querySelectorAll('#matrix-grid video').forEach(v => { if (v.src) v.play(); }); }
@@ -1106,6 +1130,160 @@ function _rowVideos(idx) { return document.querySelectorAll(`.matrix-row[data-ro
 function matrixRowPlay(idx) { _rowVideos(idx).forEach(v => { if (v.src) { v.playbackRate = matrixState.speed; v.play(); } }); }
 function matrixRowPause(idx) { _rowVideos(idx).forEach(v => v.pause()); }
 function matrixRowReplay(idx) { _rowVideos(idx).forEach(v => { if (v.src) { v.currentTime = 0; v.playbackRate = matrixState.speed; v.play(); } }); }
+
+// --------------------------------------------------------------------------
+// Matrix keyboard navigation and rating
+// --------------------------------------------------------------------------
+// Focus is tracked as (rowIndex in visibleIndices, colIndex in selected steps)
+matrixState.focusRow = 0;
+matrixState.focusCol = 0;
+
+function getMatrixCells() {
+    return document.querySelectorAll('#matrix-grid .matrix-video-cell');
+}
+
+function getMatrixDimensions() {
+    const rows = document.querySelectorAll('#matrix-grid .matrix-row');
+    if (rows.length === 0) return { rows: 0, cols: 0 };
+    const cols = rows[0].querySelectorAll('.matrix-video-cell').length;
+    return { rows: rows.length, cols };
+}
+
+function getFocusedCell() {
+    const rows = document.querySelectorAll('#matrix-grid .matrix-row');
+    if (matrixState.focusRow >= rows.length) return null;
+    const cells = rows[matrixState.focusRow].querySelectorAll('.matrix-video-cell');
+    if (matrixState.focusCol >= cells.length) return null;
+    return cells[matrixState.focusCol];
+}
+
+function updateMatrixFocus() {
+    // Clear all focus
+    document.querySelectorAll('.matrix-video-cell.focused').forEach(c => c.classList.remove('focused'));
+    const cell = getFocusedCell();
+    if (cell) {
+        cell.classList.add('focused');
+        cell.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        // Ensure the video is loaded
+        const video = cell.querySelector('video');
+        if (video && !video.src && video.dataset.proxy) {
+            video.src = video.dataset.proxy;
+            video.preload = 'auto';
+        }
+    }
+}
+
+function handleMatrixKey(e) {
+    const dim = getMatrixDimensions();
+    if (dim.rows === 0) return;
+
+    switch (e.key) {
+        case 'ArrowUp':
+            e.preventDefault();
+            matrixState.focusRow = Math.max(0, matrixState.focusRow - 1);
+            updateMatrixFocus();
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            matrixState.focusRow = Math.min(dim.rows - 1, matrixState.focusRow + 1);
+            updateMatrixFocus();
+            break;
+        case 'ArrowLeft':
+            e.preventDefault();
+            matrixState.focusCol = Math.max(0, matrixState.focusCol - 1);
+            updateMatrixFocus();
+            break;
+        case 'ArrowRight':
+            e.preventDefault();
+            matrixState.focusCol = Math.min(dim.cols - 1, matrixState.focusCol + 1);
+            updateMatrixFocus();
+            break;
+        case 'Tab':
+            e.preventDefault();
+            matrixState.focusCol++;
+            if (matrixState.focusCol >= dim.cols) {
+                matrixState.focusCol = 0;
+                matrixState.focusRow = (matrixState.focusRow + 1) % dim.rows;
+            }
+            updateMatrixFocus();
+            break;
+        case 'l': case 'L':
+            matrixRateFocused('good');
+            break;
+        case 'j': case 'J':
+            matrixRateFocused('bad');
+            break;
+        case 'k': case 'K':
+            matrixRateFocused('skip');
+            break;
+        case ' ': {
+            e.preventDefault();
+            const cell = getFocusedCell();
+            if (cell) {
+                const vid = cell.querySelector('video');
+                if (vid && vid.src) vid.paused ? vid.play() : vid.pause();
+            }
+            break;
+        }
+        case 'r': case 'R': {
+            const cell = getFocusedCell();
+            if (cell) {
+                const vid = cell.querySelector('video');
+                if (vid && vid.src) { vid.currentTime = 0; vid.play(); }
+            }
+            break;
+        }
+    }
+}
+
+async function matrixRateFocused(rating) {
+    const cell = getFocusedCell();
+    if (!cell) return;
+
+    // Extract step and index from the video proxy URL
+    const video = cell.querySelector('video');
+    const url = video?.dataset?.proxy || cell.dataset.url;
+    if (!url) return;
+
+    // URL format: /api/video-proxy/{run_id}/{step}/{index}
+    const parts = url.split('/');
+    const videoIndex = parseInt(parts[parts.length - 1]);
+    const step = parseInt(parts[parts.length - 2]);
+    const runId = parts[parts.length - 3];
+
+    const evaluator = localStorage.getItem('evaluator') || document.getElementById('setting-evaluator')?.value || 'evaluator';
+
+    try {
+        await api('/api/ratings', {
+            method: 'POST',
+            body: JSON.stringify({
+                run_id: runId,
+                checkpoint_id: `step_${step}`,
+                video_id: `${runId}/${step}/${videoIndex}`,
+                prompt_id: `prompt_${String(videoIndex).padStart(2, '0')}`,
+                evaluator: evaluator,
+                rating: rating,
+                issues: [],
+            }),
+        });
+
+        // Show rating badge on the cell
+        const badge = rating === 'good' ? '✅' : rating === 'bad' ? '❌' : '⏭';
+        const cls = rating === 'good' ? 'good' : rating === 'bad' ? 'bad' : 'skip';
+        let overlay = cell.querySelector('.matrix-rating-badge');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'matrix-rating-badge';
+            cell.appendChild(overlay);
+        }
+        overlay.textContent = badge;
+        overlay.className = `matrix-rating-badge ${cls}`;
+
+        toast(`Rated ${rating}`, 'success');
+    } catch (err) {
+        toast(`Rating error: ${err.message}`, 'error');
+    }
+}
 
 // Init
 document.addEventListener('DOMContentLoaded', loadDashboard);
